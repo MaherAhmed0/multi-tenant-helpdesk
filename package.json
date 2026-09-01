@@ -1,0 +1,28 @@
+{
+  "name": "multi-tenant-helpdesk",
+  "version": "1.0.0",
+  "description": "A backend-focused multi-tenant helpdesk system.",
+  "homepage": "https://github.com/MaherAhmed0/multi-tenant-helpdesk#readme",
+  "bugs": {
+    "url": "https://github.com/MaherAhmed0/multi-tenant-helpdesk/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaherAhmed0/multi-tenant-helpdesk.git"
+  },
+  "license": "ISC",
+  "author": "MaherAhmed0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
