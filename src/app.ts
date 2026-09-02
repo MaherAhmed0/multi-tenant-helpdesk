@@ -1,7 +1,7 @@
 import express from "express";
 
+import { healthRouter } from "./health/health.routes.js";
+
 export const app = express();
 
-app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok" });
-});
+app.use("/health", healthRouter);

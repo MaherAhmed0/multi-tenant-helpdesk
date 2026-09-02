@@ -1,15 +1,11 @@
 import { getRequiredEnv, parsePort } from "./env-utils.js";
 
-const port = parsePort(process.env.PORT ?? "3000", "PORT");
-
-export const env = {
-  port,
-
+export const migrationEnv = {
   database: {
     host: getRequiredEnv("DATABASE_HOST"),
     port: parsePort(getRequiredEnv("DATABASE_PORT"), "DATABASE_PORT"),
     name: getRequiredEnv("DATABASE_NAME"),
-    user: getRequiredEnv("DATABASE_USER"),
-    password: getRequiredEnv("DATABASE_PASSWORD"),
+    user: getRequiredEnv("MIGRATION_DATABASE_USER"),
+    password: getRequiredEnv("MIGRATION_DATABASE_PASSWORD"),
   },
 };
