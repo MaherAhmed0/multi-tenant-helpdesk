@@ -1,7 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { FileMigrationProvider, Migrator } from "kysely/migration";
 
 import { migrationDb } from "./migration-db.js";
@@ -24,6 +23,10 @@ async function runMigrations(command: MigrationCommand): Promise<void> {
       fs,
       path,
       migrationFolder,
+
+      import: async (modulePath) => {
+        return import(pathToFileURL(modulePath).href);
+      },
     }),
   });
 
