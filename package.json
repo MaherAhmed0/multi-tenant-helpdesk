@@ -21,18 +21,27 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx --env-file-if-exists=.env src/database/migrate.ts latest",
     "db:migrate:up": "tsx --env-file-if-exists=.env src/database/migrate.ts up",
-    "db:migrate:down": "tsx --env-file-if-exists=.env src/database/migrate.ts down"
+    "db:migrate:down": "tsx --env-file-if-exists=.env src/database/migrate.ts down",
+    "db:migrate:test": "tsx --env-file-if-exists=.env --env-file=.env.test src/database/migrate.ts latest",
+    "test": "node --env-file-if-exists=.env --env-file=.env.test ./node_modules/vitest/vitest.mjs run"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",
     "@types/node": "^26.4.0",
     "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   },
   "dependencies": {
+    "argon2": "^0.45.1",
+    "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
     "kysely": "^0.29.5",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "zod": "^4.5.4"
   }
 }

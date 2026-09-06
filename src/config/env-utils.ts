@@ -21,3 +21,10 @@ export function parsePort(value: string, name: string): number {
 
   return port;
 }
+
+export function parseBoolean(value: string | undefined, name: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+
+  throw new Error(`${name} must be either "true" or "false"`);
+}
