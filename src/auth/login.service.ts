@@ -2,7 +2,18 @@ import argon2 from "argon2";
 
 import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
-import { SESSION_ABSOLUTE_LIFETIME_MS } from "./auth.constants.js";
+import {
+  SESSION_ABSOLUTE_LIFETIME_MS,
+  LOGIN_FAILURE_THRESHOLD,
+  LOGIN_OBSERVATION_WINDOW_MS,
+  LOGIN_BLOCK_DURATION_MS,
+} from "./auth.constants.js";
+import { hashLoginIdentifier } from "./login-throttle-key.js";
+import {
+  findActiveLoginBlock,
+  recordLoginFailure,
+  clearLoginThrottle,
+} from "./login-throttle.repository.js";
 import { findLoginAccount } from "./login.repository.js";
 import { createSession } from "./session.repository.js";
 import { generateSessionToken, hashSessionToken } from "./session-token.js";
@@ -17,6 +28,12 @@ interface LoginContext {
 }
 
 export async function login(input: LoginInput, context: LoginContext) {
+  const identifierHash = hashLoginIdentifier(input.organizationSlug, input.email);
+
+  if (await findActiveLoginBlock(db, identifierHash)) {
+    throw new AppError(429, "Too many login attempts");
+  }
+
   const account = await findLoginAccount(db, {
     organizationSlug: input.organizationSlug,
     email: input.email,
@@ -32,8 +49,21 @@ export async function login(input: LoginInput, context: LoginContext) {
     account.userDeactivatedAt !== null ||
     account.organizationDeactivatedAt !== null
   ) {
+    const throttle = await recordLoginFailure(db, {
+      identifierHash,
+      observationWindowMs: LOGIN_OBSERVATION_WINDOW_MS,
+      blockDurationMs: LOGIN_BLOCK_DURATION_MS,
+      failureThreshold: LOGIN_FAILURE_THRESHOLD,
+    });
+
+    if (throttle.failed_attempts >= LOGIN_FAILURE_THRESHOLD) {
+      throw new AppError(429, "Too many login attempts");
+    }
+
     throw new AppError(401, "Invalid credentials");
   }
+
+  await clearLoginThrottle(db, identifierHash);
 
   const token = generateSessionToken();
   const tokenHash = hashSessionToken(token);

@@ -1,3 +1,9 @@
 export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export const SESSION_ABSOLUTE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const LOGIN_FAILURE_THRESHOLD = 5;
+
+export const LOGIN_OBSERVATION_WINDOW_MS = 15 * 60 * 1000;
+
+export const LOGIN_BLOCK_DURATION_MS = 60 * 1000;

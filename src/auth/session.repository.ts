@@ -91,3 +91,58 @@ export async function revokeSession(
     .where("revoked_at", "is", null)
     .execute();
 }
+
+interface AccountSessionScope {
+  userId: string;
+  organizationId: string;
+}
+
+export async function findUsableAccountSessions(
+  executor: DatabaseExecutor,
+  input: AccountSessionScope & { now: Date; idleCutoff: Date },
+) {
+  return executor
+    .selectFrom("sessions")
+    .select([
+      "id",
+      "created_at as createdAt",
+      "last_activity_at as lastActivityAt",
+      "absolute_expires_at as absoluteExpiresAt",
+      "user_agent as userAgent",
+    ])
+    .where("user_id", "=", input.userId)
+    .where("organization_id", "=", input.organizationId)
+    .where("revoked_at", "is", null)
+    .where("absolute_expires_at", ">", input.now)
+    .where("last_activity_at", ">", input.idleCutoff)
+    .orderBy("created_at", "desc")
+    .orderBy("id", "desc")
+    .execute();
+}
+
+export async function revokeAccountSession(
+  executor: DatabaseExecutor,
+  input: AccountSessionScope & { sessionId: string; revokedAt: Date },
+): Promise<void> {
+  await executor
+    .updateTable("sessions")
+    .set({ revoked_at: input.revokedAt })
+    .where("id", "=", input.sessionId)
+    .where("user_id", "=", input.userId)
+    .where("organization_id", "=", input.organizationId)
+    .where("revoked_at", "is", null)
+    .execute();
+}
+
+export async function revokeAccountSessions(
+  executor: DatabaseExecutor,
+  input: AccountSessionScope & { revokedAt: Date },
+): Promise<void> {
+  await executor
+    .updateTable("sessions")
+    .set({ revoked_at: input.revokedAt })
+    .where("user_id", "=", input.userId)
+    .where("organization_id", "=", input.organizationId)
+    .where("revoked_at", "is", null)
+    .execute();
+}

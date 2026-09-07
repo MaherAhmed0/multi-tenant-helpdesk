@@ -50,8 +50,17 @@ interface SessionsTable {
   user_agent: string | null;
 }
 
+interface LoginThrottlesTable {
+  identifier_hash: Immutable<string>;
+  failed_attempts: number;
+  window_started_at: Date;
+  blocked_until: Date | null;
+  updated_at: Date;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   users: UsersTable;
   sessions: SessionsTable;
+  login_throttles: LoginThrottlesTable;
 }
