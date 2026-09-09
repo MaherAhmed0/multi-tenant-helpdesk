@@ -19,6 +19,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "system-admin:create": "tsx --env-file-if-exists=.env src/system-admin/create.cli.ts",
     "db:migrate": "tsx --env-file-if-exists=.env src/database/migrate.ts latest",
     "db:migrate:up": "tsx --env-file-if-exists=.env src/database/migrate.ts up",
     "db:migrate:down": "tsx --env-file-if-exists=.env src/database/migrate.ts down",
@@ -37,10 +38,12 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.7.2",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
     "kysely": "^0.29.5",
+    "otplib": "^13.5.0",
     "pg": "^8.23.0",
     "zod": "^4.5.4"
   }

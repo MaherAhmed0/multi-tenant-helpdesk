@@ -28,3 +28,18 @@ export function parseBoolean(value: string | undefined, name: string): boolean {
 
   throw new Error(`${name} must be either "true" or "false"`);
 }
+
+export function parseTotpEncryptionKey(value: string): Buffer {
+  const key = Buffer.from(value, "base64");
+
+  // Buffer.from is permissive; round-trip equality requires canonical Base64.
+  if (key.toString("base64") !== value) {
+    throw new Error("TOTP_ENCRYPTION_KEY must be valid standard Base64");
+  }
+
+  if (key.length !== 32) {
+    throw new Error("TOTP_ENCRYPTION_KEY must decode to exactly 32 bytes");
+  }
+
+  return key;
+}

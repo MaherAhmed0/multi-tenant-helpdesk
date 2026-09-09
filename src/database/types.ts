@@ -58,9 +58,39 @@ interface LoginThrottlesTable {
   updated_at: Date;
 }
 
+export interface SystemAdminsTable {
+  id: GeneratedImmutable<string>;
+
+  email: string;
+  password_hash: string;
+
+  totp_secret_ciphertext: string;
+  totp_secret_iv: string;
+  totp_secret_auth_tag: string;
+
+  last_totp_time_step: number | null;
+
+  deactivated_at: Date | null;
+
+  created_at: GeneratedImmutable<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface SystemAdminRecoveryCodesTable {
+  id: GeneratedImmutable<string>;
+
+  system_admin_id: Immutable<string>;
+  code_hash: Immutable<string>;
+
+  used_at: Date | null;
+  created_at: GeneratedImmutable<Date>;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   users: UsersTable;
   sessions: SessionsTable;
   login_throttles: LoginThrottlesTable;
+  system_admins: SystemAdminsTable;
+  system_admin_recovery_codes: SystemAdminRecoveryCodesTable;
 }

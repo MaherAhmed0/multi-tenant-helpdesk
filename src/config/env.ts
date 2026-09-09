@@ -1,4 +1,9 @@
-import { getRequiredEnv, parseBoolean, parsePort } from "./env-utils.js";
+import {
+  getRequiredEnv,
+  parseBoolean,
+  parsePort,
+  parseTotpEncryptionKey,
+} from "./env-utils.js";
 
 const port = parsePort(process.env.PORT ?? "3000", "PORT");
 
@@ -12,6 +17,8 @@ export const env = {
   port,
 
   csrfSecret,
+
+  totpEncryptionKey: parseTotpEncryptionKey(getRequiredEnv("TOTP_ENCRYPTION_KEY")),
 
   database: {
     host: getRequiredEnv("DATABASE_HOST"),
