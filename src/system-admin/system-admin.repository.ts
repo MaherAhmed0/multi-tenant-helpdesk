@@ -5,6 +5,20 @@ import type { Database } from "../database/types.js";
 
 type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
 
+// Call inside the recovery transaction to serialize completion with deactivation.
+export async function lockActiveSystemAdminForRecovery(
+  executor: DatabaseExecutor,
+  systemAdminId: string,
+) {
+  return executor
+    .selectFrom("system_admins")
+    .select("id")
+    .where("id", "=", systemAdminId)
+    .where("deactivated_at", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+}
+
 export async function findSystemAdminForTotp(
   executor: DatabaseExecutor,
   systemAdminId: string,
@@ -35,10 +49,12 @@ export async function claimSystemAdminTotpTimeStep(
     })
     .where("id", "=", systemAdminId)
     .where("deactivated_at", "is", null)
-    .where((eb) => eb.or([
-      eb("last_totp_time_step", "is", null),
-      eb("last_totp_time_step", "<", acceptedTimeStep),
-    ]))
+    .where((eb) =>
+      eb.or([
+        eb("last_totp_time_step", "is", null),
+        eb("last_totp_time_step", "<", acceptedTimeStep),
+      ]),
+    )
     .returning("id")
     .executeTakeFirst();
 }

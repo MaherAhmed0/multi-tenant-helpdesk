@@ -121,3 +121,66 @@ export async function revokeSystemAdminSession(
     .returning(["id", "revoked_at as revokedAt"])
     .executeTakeFirst();
 }
+
+export async function findUsableSystemAdminSessions(
+  executor: DatabaseExecutor,
+  systemAdminId: string,
+) {
+  return executor
+    .selectFrom("system_admin_sessions")
+    .innerJoin(
+      "system_admins",
+      "system_admins.id",
+      "system_admin_sessions.system_admin_id",
+    )
+    .select([
+      "system_admin_sessions.id as id",
+      "system_admin_sessions.created_at as createdAt",
+      "system_admin_sessions.last_activity_at as lastActivityAt",
+      "system_admin_sessions.absolute_expires_at as absoluteExpiresAt",
+      "system_admin_sessions.user_agent as userAgent",
+    ])
+    .where("system_admin_sessions.system_admin_id", "=", systemAdminId)
+    .where("system_admin_sessions.revoked_at", "is", null)
+    .where(
+      "system_admin_sessions.absolute_expires_at",
+      ">",
+      sql<Date>`clock_timestamp()`,
+    )
+    .where(
+      "system_admin_sessions.last_activity_at",
+      ">",
+      sql<Date>`
+      clock_timestamp() - ${SYSTEM_ADMIN_SESSION_IDLE_TIMEOUT_MS} * interval '1 millisecond'
+    `,
+    )
+    .where("system_admins.deactivated_at", "is", null)
+    .orderBy("system_admin_sessions.created_at", "desc")
+    .orderBy("system_admin_sessions.id", "desc")
+    .execute();
+}
+
+export async function revokeOwnedSystemAdminSession(
+  executor: DatabaseExecutor,
+  input: { systemAdminId: string; sessionId: string },
+): Promise<void> {
+  await executor
+    .updateTable("system_admin_sessions")
+    .set({ revoked_at: sql<Date>`clock_timestamp()` })
+    .where("id", "=", input.sessionId)
+    .where("system_admin_id", "=", input.systemAdminId)
+    .where("revoked_at", "is", null)
+    .execute();
+}
+
+export async function revokeSystemAdminSessions(
+  executor: DatabaseExecutor,
+  systemAdminId: string,
+): Promise<void> {
+  await executor
+    .updateTable("system_admin_sessions")
+    .set({ revoked_at: sql<Date>`clock_timestamp()` })
+    .where("system_admin_id", "=", systemAdminId)
+    .where("revoked_at", "is", null)
+    .execute();
+}
