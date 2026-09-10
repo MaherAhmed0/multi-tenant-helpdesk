@@ -86,6 +86,32 @@ export interface SystemAdminRecoveryCodesTable {
   created_at: GeneratedImmutable<Date>;
 }
 
+export interface SystemAdminAuthChallengesTable {
+  id: GeneratedImmutable<string>;
+
+  system_admin_id: Immutable<string>;
+  token_hash: Immutable<string>;
+
+  failed_attempts: Generated<number>;
+  expires_at: Immutable<Date>;
+  consumed_at: Date | null;
+  created_at: GeneratedImmutable<Date>;
+}
+
+export interface SystemAdminSessionsTable {
+  id: GeneratedImmutable<string>;
+
+  system_admin_id: Immutable<string>;
+  token_hash: Immutable<string>;
+
+  created_at: GeneratedImmutable<Date>;
+  last_activity_at: Generated<Date>;
+  absolute_expires_at: Immutable<Date>;
+
+  revoked_at: Date | null;
+  user_agent: string | null;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   users: UsersTable;
@@ -93,4 +119,6 @@ export interface Database {
   login_throttles: LoginThrottlesTable;
   system_admins: SystemAdminsTable;
   system_admin_recovery_codes: SystemAdminRecoveryCodesTable;
+  system_admin_auth_challenges: SystemAdminAuthChallengesTable;
+  system_admin_sessions: SystemAdminSessionsTable;
 }

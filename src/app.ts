@@ -4,6 +4,7 @@ import { healthRouter } from "./health/health.routes.js";
 import { registrationRouter } from "./organization-registration/registration.routes.js";
 import { errorMiddleware } from "./errors/error.middleware.js";
 import { authRouter } from "./auth/auth.routes.js";
+import { systemAdminAuthRouter } from "./system-admin/auth.routes.js";
 import cookieParser from "cookie-parser";
 
 export const app = express();
@@ -14,5 +15,6 @@ app.use(cookieParser());
 app.use("/health", healthRouter);
 app.use("/organization-registration", registrationRouter);
 app.use("/auth", authRouter);
+app.use("/system-admin/auth", systemAdminAuthRouter);
 
 app.use(errorMiddleware);

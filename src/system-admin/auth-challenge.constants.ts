@@ -1,0 +1,3 @@
+export const AUTH_CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
+
+export const AUTH_CHALLENGE_MAX_FAILED_ATTEMPTS = 5;

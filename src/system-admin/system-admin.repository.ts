@@ -1,8 +1,62 @@
 import type { Kysely, Transaction } from "kysely";
+import { sql } from "kysely";
 
 import type { Database } from "../database/types.js";
 
 type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
+
+export async function findSystemAdminForTotp(
+  executor: DatabaseExecutor,
+  systemAdminId: string,
+) {
+  return executor
+    .selectFrom("system_admins")
+    .select([
+      "id",
+      "totp_secret_ciphertext as ciphertext",
+      "totp_secret_iv as iv",
+      "totp_secret_auth_tag as authTag",
+      "deactivated_at as deactivatedAt",
+    ])
+    .where("id", "=", systemAdminId)
+    .executeTakeFirst();
+}
+
+export async function claimSystemAdminTotpTimeStep(
+  executor: DatabaseExecutor,
+  systemAdminId: string,
+  acceptedTimeStep: number,
+) {
+  return executor
+    .updateTable("system_admins")
+    .set({
+      last_totp_time_step: acceptedTimeStep,
+      updated_at: sql<Date>`clock_timestamp()`,
+    })
+    .where("id", "=", systemAdminId)
+    .where("deactivated_at", "is", null)
+    .where((eb) => eb.or([
+      eb("last_totp_time_step", "is", null),
+      eb("last_totp_time_step", "<", acceptedTimeStep),
+    ]))
+    .returning("id")
+    .executeTakeFirst();
+}
+
+export async function findSystemAdminForPasswordLogin(
+  executor: DatabaseExecutor,
+  email: string,
+) {
+  return executor
+    .selectFrom("system_admins")
+    .select([
+      "id",
+      "password_hash as passwordHash",
+      "deactivated_at as deactivatedAt",
+    ])
+    .where("email", "=", email)
+    .executeTakeFirst();
+}
 
 interface CreateSystemAdminInput {
   email: string;

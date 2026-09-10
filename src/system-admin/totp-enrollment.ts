@@ -1,13 +1,9 @@
 import { generateSecret, generateURI, verify } from "otplib";
 import { z } from "zod";
 
+import { TOTP_OPTIONS } from "./totp.config.js";
+
 const ISSUER = "Multi-Tenant Helpdesk";
-const TOTP_OPTIONS = {
-  strategy: "totp",
-  algorithm: "sha1",
-  digits: 6,
-  period: 30,
-} as const;
 
 const accountSchema = z
   .email()
@@ -54,7 +50,6 @@ export async function confirmTotpEnrollment(
     ...TOTP_OPTIONS,
     secret: pendingSecret,
     token: code,
-    epochTolerance: 5,
   });
 
   return result.valid;
