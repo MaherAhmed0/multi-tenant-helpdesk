@@ -1,4 +1,4 @@
-import type { AuthContext } from "../auth/session-auth.service.js";
+import type { AuthContext } from "../auth/sessions/session-auth.service.js";
 import type { SystemAdminAuthContext } from "../system-admin/auth.middleware.js";
 
 declare global {

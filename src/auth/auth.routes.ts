@@ -1,16 +1,16 @@
 import { Router } from "express";
 
 import { requireAuthentication } from "./auth.middleware.js";
-import { loginController } from "./login.controller.js";
-import { getMeController } from "./me.controller.js";
-import { logoutController } from "./logout.controller.js";
-import { getCsrfController } from "./csrf.controller.js";
-import { requireCsrfToken, requireLoginClient } from "./csrf.middleware.js";
+import { loginController } from "./login/login.controller.js";
+import { getMeController } from "./sessions/me.controller.js";
+import { logoutController } from "./sessions/logout.controller.js";
+import { getCsrfController } from "./csrf/csrf.controller.js";
+import { requireCsrfToken, requireLoginClient } from "./csrf/csrf.middleware.js";
 import {
   listSessionsController,
   revokeSessionController,
   logoutAllController,
-} from "./session-management.controller.js";
+} from "./sessions/session-management.controller.js";
 
 export const authRouter = Router();
 

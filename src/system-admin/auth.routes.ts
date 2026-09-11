@@ -1,8 +1,8 @@
 import { Router } from "express";
 
-import { systemAdminLoginController } from "./login.controller.js";
-import { systemAdminMfaController } from "./mfa.controller.js";
-import { systemAdminRecoveryController } from "./recovery.controller.js";
+import { systemAdminLoginController } from "./login/login.controller.js";
+import { systemAdminMfaController } from "./mfa/mfa.controller.js";
+import { systemAdminRecoveryController } from "./recovery/recovery.controller.js";
 import { requireSystemAdminAuthentication } from "./auth.middleware.js";
 import { getSystemAdminMeController } from "./me.controller.js";
 import {
@@ -10,7 +10,7 @@ import {
   listSystemAdminSessionsController,
   revokeSystemAdminSessionController,
   logoutAllSystemAdminSessionsController,
-} from "./session-management.controller.js";
+} from "./sessions/session-management.controller.js";
 
 export const systemAdminAuthRouter = Router();
 

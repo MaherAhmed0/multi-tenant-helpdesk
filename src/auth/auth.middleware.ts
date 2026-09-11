@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { AppError } from "../errors/app-error.js";
-import { authenticateSession } from "./session-auth.service.js";
+import { authenticateSession } from "./sessions/session-auth.service.js";
 
 export async function requireAuthentication(
   req: Request,

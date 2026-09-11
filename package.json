@@ -19,7 +19,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "system-admin:create": "tsx --env-file-if-exists=.env src/system-admin/create.cli.ts",
+    "system-admin:create": "tsx --env-file-if-exists=.env src/system-admin/provisioning/create.cli.ts",
     "db:migrate": "tsx --env-file-if-exists=.env src/database/migrate.ts latest",
     "db:migrate:up": "tsx --env-file-if-exists=.env src/database/migrate.ts up",
     "db:migrate:down": "tsx --env-file-if-exists=.env src/database/migrate.ts down",

@@ -7,13 +7,13 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { app } from "../app.js";
 import { db } from "../database/db.js";
 import { env } from "../config/env.js";
-import { SYSTEM_ADMIN_SESSION_COOKIE_NAME } from "./session-cookie.js";
+import { SYSTEM_ADMIN_SESSION_COOKIE_NAME } from "./sessions/session-cookie.js";
 import {
   SYSTEM_ADMIN_SESSION_ABSOLUTE_LIFETIME_MS,
   SYSTEM_ADMIN_SESSION_IDLE_TIMEOUT_MS,
-} from "./session.constants.js";
-import { generateSystemAdminSessionToken } from "./session-token.js";
-import * as sessionRepository from "./session.repository.js";
+} from "./sessions/session.constants.js";
+import { generateSystemAdminSessionToken } from "./sessions/session-token.js";
+import * as sessionRepository from "./sessions/session.repository.js";
 import { createSystemAdmin } from "./system-admin.repository.js";
 
 afterEach(() => vi.restoreAllMocks());

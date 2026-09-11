@@ -5,12 +5,12 @@ import { AppError } from "../errors/app-error.js";
 import {
   SYSTEM_ADMIN_SESSION_COOKIE_NAME,
   getSystemAdminSessionCookieOptions,
-} from "./session-cookie.js";
-import { hashSystemAdminSessionToken } from "./session-token.js";
+} from "./sessions/session-cookie.js";
+import { hashSystemAdminSessionToken } from "./sessions/session-token.js";
 import {
   findActiveSystemAdminSession,
   updateSystemAdminSessionActivity,
-} from "./session.repository.js";
+} from "./sessions/session.repository.js";
 
 export interface SystemAdminAuthContext {
   systemAdminId: string;
