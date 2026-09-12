@@ -27,11 +27,35 @@ export interface UsersTable {
   email: string;
   password_hash: string;
   role: TenantRole;
+  team_id: string | null;
 
   deactivated_at: Date | null;
 
   created_at: GeneratedImmutable<Date>;
   updated_at: Generated<Date>;
+}
+
+export interface TeamsTable {
+  id: GeneratedImmutable<string>;
+  organization_id: Immutable<string>;
+  name: string;
+  is_general: Generated<boolean>;
+  deactivated_at: Date | null;
+  created_at: GeneratedImmutable<Date>;
+}
+
+export interface TenantUserInvitationsTable {
+  id: GeneratedImmutable<string>;
+  organization_id: Immutable<string>;
+  name: string;
+  email: string;
+  role: "AGENT" | "ORGANIZATION_ADMIN";
+  target_team_id: string | null;
+  token_hash: Immutable<string>;
+  expires_at: Immutable<Date>;
+  revoked_at: Date | null;
+  consumed_at: Date | null;
+  created_at: GeneratedImmutable<Date>;
 }
 
 interface SessionsTable {
@@ -115,6 +139,8 @@ export interface SystemAdminSessionsTable {
 export interface Database {
   organizations: OrganizationsTable;
   users: UsersTable;
+  teams: TeamsTable;
+  tenant_user_invitations: TenantUserInvitationsTable;
   sessions: SessionsTable;
   login_throttles: LoginThrottlesTable;
   system_admins: SystemAdminsTable;

@@ -8,6 +8,7 @@ import { app } from "../../app.js";
 import { db } from "../../database/db.js";
 import type { OrganizationsTable } from "../../database/types.js";
 import { createUser } from "../../organization-registration/user.repository.js";
+import { createGeneralTeam } from "../../teams/team.repository.js";
 import { createSystemAdmin } from "../system-admin.repository.js";
 import { createSystemAdminSession } from "../sessions/session.repository.js";
 import { generateSystemAdminSessionToken } from "../sessions/session-token.js";
@@ -270,6 +271,7 @@ describe("SYSTEM_ADMIN platform organization reads", () => {
   it("returns only safe ORGANIZATION_ADMIN users of the target organization", async () => {
     const target = organizations[1]!;
     const foreign = organizations[2]!;
+    const general = await createGeneralTeam(db, target.id);
     const users = await db
       .insertInto("users")
       .values([
@@ -291,6 +293,7 @@ describe("SYSTEM_ADMIN platform organization reads", () => {
         {
           organization_id: target.id,
           role: "AGENT",
+          team_id: general.id,
           name: "Agent",
           email: `${randomUUID()}@example.com`,
           password_hash: "test-only-hash",

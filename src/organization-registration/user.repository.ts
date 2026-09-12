@@ -10,6 +10,7 @@ interface CreateUserInput {
   email: string;
   passwordHash: string;
   role: TenantRole;
+  teamId?: string | null;
 }
 
 export async function createUser(
@@ -24,6 +25,7 @@ export async function createUser(
       email: input.email,
       password_hash: input.passwordHash,
       role: input.role,
+      team_id: input.teamId ?? null,
     })
     .returning(["id", "organization_id", "name", "email", "role"])
     .executeTakeFirstOrThrow();

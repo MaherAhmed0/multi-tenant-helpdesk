@@ -18,6 +18,7 @@ import { db } from "../../database/db.js";
 import type { TenantRole } from "../../database/types.js";
 import { createOrganization } from "../../organization-registration/organization.repository.js";
 import { createUser } from "../../organization-registration/user.repository.js";
+import { createGeneralTeam } from "../../teams/team.repository.js";
 import { createSession } from "../../auth/sessions/session.repository.js";
 import {
   generateSessionToken,
@@ -84,6 +85,7 @@ async function createTenant(
     name: "User intervention tenant",
     slug: `intervention-${randomUUID()}`,
   });
+  const general = await createGeneralTeam(db, organization.id);
   const users = [];
   for (const role of roles) {
     const user = await createUser(db, {
@@ -92,6 +94,7 @@ async function createTenant(
       email: `${randomUUID()}@example.com`,
       passwordHash,
       role,
+      teamId: role === "AGENT" ? general.id : null,
     });
     users.push({
       ...user,

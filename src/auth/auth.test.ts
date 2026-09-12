@@ -272,6 +272,12 @@ describe("tenant authentication", () => {
       .where("organization_id", "=", registration.body.organization.id)
       .executeTakeFirstOrThrow();
     const colleagueEmail = `colleague-${randomUUID()}@example.com`;
+    const general = await db
+      .selectFrom("teams")
+      .select("id")
+      .where("organization_id", "=", registration.body.organization.id)
+      .where("is_general", "=", true)
+      .executeTakeFirstOrThrow();
     await db
       .insertInto("users")
       .values({
@@ -280,6 +286,7 @@ describe("tenant authentication", () => {
         email: colleagueEmail,
         password_hash: admin.password_hash,
         role: "AGENT",
+        team_id: general.id,
       })
       .execute();
     const colleague = request.agent(app);
@@ -359,63 +366,73 @@ describe("tenant authentication", () => {
     { method: "post", route: "/auth/logout" },
     { method: "delete", route: "/auth/sessions/:sessionId" },
     { method: "post", route: "/auth/logout-all" },
-  ] as const)("requires a session-bound CSRF token for $method $route", async ({ method, route }) => {
-    const input = registrationInput();
-    await request(app)
-      .post("/organization-registration")
-      .send(input)
-      .expect(201);
-    const credentials = {
-      organizationSlug: input.organizationSlug,
-      email: input.adminEmail,
-      password: input.adminPassword,
-    };
-    const first = request.agent(app);
-    const second = request.agent(app);
-    const login = await first
-      .post("/auth/login")
-      .set("X-Helpdesk-Client", "web")
-      .send(credentials)
-      .expect(200);
-    await second
-      .post("/auth/login")
-      .set("X-Helpdesk-Client", "web")
-      .send(credentials)
-      .expect(200);
+  ] as const)(
+    "requires a session-bound CSRF token for $method $route",
+    async ({ method, route }) => {
+      const input = registrationInput();
+      await request(app)
+        .post("/organization-registration")
+        .send(input)
+        .expect(201);
+      const credentials = {
+        organizationSlug: input.organizationSlug,
+        email: input.adminEmail,
+        password: input.adminPassword,
+      };
+      const first = request.agent(app);
+      const second = request.agent(app);
+      const login = await first
+        .post("/auth/login")
+        .set("X-Helpdesk-Client", "web")
+        .send(credentials)
+        .expect(200);
+      await second
+        .post("/auth/login")
+        .set("X-Helpdesk-Client", "web")
+        .send(credentials)
+        .expect(200);
 
-    const csrf = await first.get("/auth/csrf").expect(200);
-    expect(csrf.body).toEqual({ csrfToken: expect.stringMatching(/^[a-f0-9]{64}$/) });
-    expect(csrf.headers["cache-control"]).toBe("no-store");
-    expect(csrf.headers["set-cookie"]).toBeUndefined();
-    const repeated = await first.get("/auth/csrf").expect(200);
-    expect(repeated.body).toEqual(csrf.body);
-    const otherCsrf = await second.get("/auth/csrf").expect(200);
-    expect(otherCsrf.body.csrfToken).not.toBe(csrf.body.csrfToken);
+      const csrf = await first.get("/auth/csrf").expect(200);
+      expect(csrf.body).toEqual({
+        csrfToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(csrf.headers["cache-control"]).toBe("no-store");
+      expect(csrf.headers["set-cookie"]).toBeUndefined();
+      const repeated = await first.get("/auth/csrf").expect(200);
+      expect(repeated.body).toEqual(csrf.body);
+      const otherCsrf = await second.get("/auth/csrf").expect(200);
+      expect(otherCsrf.body.csrfToken).not.toBe(csrf.body.csrfToken);
 
-    const path = route.replace(":sessionId", login.body.session.id);
-    const missing = await first[method](path).expect(403);
-    expect(missing.body).toEqual({ error: "Invalid CSRF token" });
+      const path = route.replace(":sessionId", login.body.session.id);
+      const missing = await first[method](path).expect(403);
+      expect(missing.body).toEqual({ error: "Invalid CSRF token" });
 
-    // Cover mismatched lengths and a wrong token of the expected byte length.
-    const changedToken = (csrf.body.csrfToken[0] === "0" ? "1" : "0")
-      + csrf.body.csrfToken.slice(1);
-    for (const token of ["invalid", csrf.body.csrfToken + "0", changedToken]) {
-      const invalid = await first[method](path)
-        .set("X-CSRF-Token", token)
+      // Cover mismatched lengths and a wrong token of the expected byte length.
+      const changedToken =
+        (csrf.body.csrfToken[0] === "0" ? "1" : "0") +
+        csrf.body.csrfToken.slice(1);
+      for (const token of [
+        "invalid",
+        csrf.body.csrfToken + "0",
+        changedToken,
+      ]) {
+        const invalid = await first[method](path)
+          .set("X-CSRF-Token", token)
+          .expect(403);
+        expect(invalid.body).toEqual(missing.body);
+      }
+
+      const crossSession = await second[method](path)
+        .set("X-CSRF-Token", csrf.body.csrfToken)
         .expect(403);
-      expect(invalid.body).toEqual(missing.body);
-    }
+      expect(crossSession.body).toEqual(missing.body);
+      await first.get("/auth/me").expect(200);
+      await second.get("/auth/me").expect(200);
 
-    const crossSession = await second[method](path)
-      .set("X-CSRF-Token", csrf.body.csrfToken)
-      .expect(403);
-    expect(crossSession.body).toEqual(missing.body);
-    await first.get("/auth/me").expect(200);
-    await second.get("/auth/me").expect(200);
-
-    await first[method](path)
-      .set("X-CSRF-Token", csrf.body.csrfToken)
-      .expect(204);
-    await first.get("/auth/me").expect(401);
-  });
+      await first[method](path)
+        .set("X-CSRF-Token", csrf.body.csrfToken)
+        .expect(204);
+      await first.get("/auth/me").expect(401);
+    },
+  );
 });

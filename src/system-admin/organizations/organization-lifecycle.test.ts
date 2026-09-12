@@ -8,6 +8,7 @@ import { app } from "../../app.js";
 import { db } from "../../database/db.js";
 import { createOrganization } from "../../organization-registration/organization.repository.js";
 import { createUser } from "../../organization-registration/user.repository.js";
+import { createGeneralTeam } from "../../teams/team.repository.js";
 import { createSession } from "../../auth/sessions/session.repository.js";
 import { generateSessionToken, hashSessionToken } from "../../auth/sessions/session-token.js";
 import { SESSION_ABSOLUTE_LIFETIME_MS } from "../../auth/auth.constants.js";
@@ -55,13 +56,14 @@ async function tenantSession(organizationId: string, userId: string) {
 
 async function createTenant() {
   const organization = await createOrganization(db, { name: "Lifecycle tenant", slug: `lifecycle-${randomUUID()}` });
+  const general = await createGeneralTeam(db, organization.id);
   const admin = await createUser(db, {
     organizationId: organization.id, name: "Tenant admin", email: `${randomUUID()}@example.com`,
     passwordHash, role: "ORGANIZATION_ADMIN",
   });
   const agent = await createUser(db, {
     organizationId: organization.id, name: "Tenant agent", email: `${randomUUID()}@example.com`,
-    passwordHash, role: "AGENT",
+    passwordHash, role: "AGENT", teamId: general.id,
   });
   const sessions = [await tenantSession(organization.id, admin.id), await tenantSession(organization.id, agent.id)];
   return { organization, admin, agent, sessions };

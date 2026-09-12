@@ -5,6 +5,7 @@ import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
 import { createOrganization } from "./organization.repository.js";
 import { createUser } from "./user.repository.js";
+import { createGeneralTeam } from "../teams/team.repository.js";
 
 import type { RegistrationInput } from "./registration.schema.js";
 
@@ -19,6 +20,8 @@ export async function registerOrganization(input: RegistrationInput) {
         name: input.organizationName,
         slug: input.organizationSlug,
       });
+
+      await createGeneralTeam(trx, organization.id);
 
       const admin = await createUser(trx, {
         organizationId: organization.id,

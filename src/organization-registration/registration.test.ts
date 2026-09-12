@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { app } from "../app.js";
+import { db } from "../database/db.js";
+import * as teamRepository from "../teams/team.repository.js";
 import { registerOrganization } from "./registration.service.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 function validRegistration() {
   const unique = randomUUID();
@@ -39,6 +43,24 @@ describe("POST /organization-registration", () => {
     });
 
     expect(response.body.admin).not.toHaveProperty("passwordHash");
+    const teams = await db
+      .selectFrom("teams")
+      .selectAll()
+      .where("organization_id", "=", response.body.organization.id)
+      .execute();
+    expect(teams).toEqual([
+      expect.objectContaining({
+        name: "General",
+        is_general: true,
+        deactivated_at: null,
+      }),
+    ]);
+    const admin = await db
+      .selectFrom("users")
+      .select("team_id")
+      .where("id", "=", response.body.admin.id)
+      .executeTakeFirstOrThrow();
+    expect(admin.team_id).toBeNull();
   });
 
   it("rejects invalid registration data", async () => {
@@ -90,5 +112,43 @@ describe("POST /organization-registration", () => {
       .post("/organization-registration")
       .send(input)
       .expect(201);
+  });
+
+  it("rolls back registration if General creation fails", async () => {
+    const input = validRegistration();
+    vi.spyOn(teamRepository, "createGeneralTeam").mockImplementationOnce(
+      async (executor, organizationId) => {
+        expect(executor.isTransaction).toBe(true);
+        await executor
+          .insertInto("teams")
+          .values({
+            organization_id: organizationId,
+            name: "Wrong General name",
+            is_general: true,
+          })
+          .execute();
+        throw new Error(
+          "Expected General integrity check to reject the insert",
+        );
+      },
+    );
+    await expect(registerOrganization(input)).rejects.toMatchObject({
+      constraint: "teams_general_check",
+    });
+    expect(
+      await db
+        .selectFrom("organizations")
+        .select("id")
+        .where("slug", "=", input.organizationSlug)
+        .execute(),
+    ).toEqual([]);
+    expect(
+      await db
+        .selectFrom("users")
+        .select("id")
+        .where("email", "=", input.adminEmail)
+        .execute(),
+    ).toEqual([]);
+    await registerOrganization(input);
   });
 });
