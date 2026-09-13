@@ -112,6 +112,20 @@ export async function findTeamForUpdate(
     .executeTakeFirst();
 }
 
+export async function findTeamForShare(
+  executor: DatabaseExecutor,
+  organizationId: string,
+  teamId: string,
+) {
+  return executor
+    .selectFrom("teams")
+    .select(teamFields)
+    .where("organization_id", "=", organizationId)
+    .where("id", "=", teamId)
+    .forShare()
+    .executeTakeFirst();
+}
+
 export async function findGeneralTeam(
   executor: DatabaseExecutor,
   organizationId: string,
