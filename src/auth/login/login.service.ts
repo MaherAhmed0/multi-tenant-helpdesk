@@ -19,12 +19,14 @@ import { createSession } from "../sessions/session.repository.js";
 import { generateSessionToken, hashSessionToken } from "../sessions/session-token.js";
 
 import type { LoginInput } from "./login.schema.js";
+import type { TenantRole } from "../../database/types.js";
 
 const DUMMY_PASSWORD_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$u70fNb9bs9DpgNz9KU5yEg$uG3768+9jHsK01Su8RJf2+qCf/Sbq0YirpqlO3QfCXA";
 
 interface LoginContext {
   userAgent: string | null;
+  requiredRole?: TenantRole;
 }
 
 export async function login(input: LoginInput, context: LoginContext) {
@@ -47,7 +49,8 @@ export async function login(input: LoginInput, context: LoginContext) {
     !account ||
     !passwordMatches ||
     account.userDeactivatedAt !== null ||
-    account.organizationDeactivatedAt !== null
+    account.organizationDeactivatedAt !== null ||
+    (context.requiredRole !== undefined && account.role !== context.requiredRole)
   ) {
     const throttle = await recordLoginFailure(db, {
       identifierHash,
