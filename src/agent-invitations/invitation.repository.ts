@@ -12,7 +12,7 @@ export interface InvitationListInput {
   limit: number;
 }
 
-const invitationState = sql<InvitationState>`case
+export const invitationState = sql<InvitationState>`case
   when tenant_user_invitations.consumed_at is not null then 'consumed'
   when tenant_user_invitations.revoked_at is not null then 'revoked'
   when tenant_user_invitations.expires_at <= statement_timestamp() then 'expired'

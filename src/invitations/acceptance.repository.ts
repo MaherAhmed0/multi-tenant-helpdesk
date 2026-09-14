@@ -7,7 +7,7 @@ type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
 
 // Public credential lookup: the stored invitation, never request identity fields,
 // establishes organization scope for every subsequent operation.
-export async function findAgentInvitationByTokenHash(
+export async function findInvitationByTokenHash(
   executor: DatabaseExecutor,
   tokenHash: string,
 ) {
@@ -15,11 +15,11 @@ export async function findAgentInvitationByTokenHash(
     .selectFrom("tenant_user_invitations")
     .select("id")
     .where("token_hash", "=", tokenHash)
-    .where("role", "=", "AGENT")
+    .where("role", "in", ["AGENT", "ORGANIZATION_ADMIN"])
     .executeTakeFirst();
 }
 
-export async function findAgentInvitationForAcceptance(
+export async function findInvitationForAcceptance(
   executor: DatabaseExecutor,
   tokenHash: string,
 ) {
@@ -30,13 +30,14 @@ export async function findAgentInvitationForAcceptance(
       "organization_id as organizationId",
       "name",
       "email",
+      "role",
       "target_team_id as targetTeamId",
       "expires_at as expiresAt",
       "consumed_at as consumedAt",
       "revoked_at as revokedAt",
     ])
     .where("token_hash", "=", tokenHash)
-    .where("role", "=", "AGENT")
+    .where("role", "in", ["AGENT", "ORGANIZATION_ADMIN"])
     .forUpdate()
     .executeTakeFirst();
   if (!invitation) return undefined;
@@ -63,7 +64,7 @@ export async function findAcceptanceOrganizationForShare(
   );
 }
 
-export async function consumeAgentInvitation(
+export async function consumeInvitation(
   executor: DatabaseExecutor,
   organizationId: string,
   invitationId: string,
@@ -73,7 +74,7 @@ export async function consumeAgentInvitation(
     .set({ consumed_at: sql<Date>`clock_timestamp()` })
     .where("organization_id", "=", organizationId)
     .where("id", "=", invitationId)
-    .where("role", "=", "AGENT")
+    .where("role", "in", ["AGENT", "ORGANIZATION_ADMIN"])
     .where("consumed_at", "is", null)
     .where("revoked_at", "is", null)
     .where("expires_at", ">", sql<Date>`clock_timestamp()`)

@@ -16,6 +16,7 @@ import * as organizationRepository from "../system-admin/organizations/platform-
 import { generateInvitationToken } from "../agent-invitations/invitation-token.js";
 import * as invitationRepository from "../agent-invitations/invitation.repository.js";
 import { revokeInvitation } from "../agent-invitations/invitations.service.js";
+import { revokeAdminInvitation } from "../organization-admin-invitations/invitations.service.js";
 import * as acceptanceRepository from "./acceptance.repository.js";
 import { acceptInvitation } from "./acceptance.service.js";
 
@@ -83,7 +84,7 @@ async function waitForLock(table: string, clause: string) {
   }, { timeout: 5000, interval: 20 });
 }
 
-describe("public AGENT invitation acceptance", () => {
+describe("public invitation acceptance", () => {
   it("creates the stored AGENT identity in General, consumes the invitation and never signs in", async () => {
     const invitation = await invite();
     const response = await accept(invitation.token).expect(201);
@@ -110,13 +111,78 @@ describe("public AGENT invitation acceptance", () => {
     }
   });
 
-  it("rejects unknown and unsupported-role credentials before Argon2", async () => {
-    const adminInvitation = await invite({ role: "ORGANIZATION_ADMIN" });
+
+  it("accepts the stored admin identity with a null team and no team queries or automatic session", async () => {
+    const invitation = await invite({ role: "ORGANIZATION_ADMIN" });
+    const general = vi.spyOn(teamRepository, "findGeneralTeam");
+    const team = vi.spyOn(teamRepository, "findTeamForShare");
+    const response = await accept(invitation.token).expect(201);
+    expect(response.body).toEqual({
+      id: expect.any(String), name: invitation.name, email: invitation.email,
+      role: "ORGANIZATION_ADMIN", team: null,
+    });
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["set-cookie"]).toBeUndefined();
+    expect(general).not.toHaveBeenCalled();
+    expect(team).not.toHaveBeenCalled();
+    const [user] = await users(invitation);
+    expect(user).toMatchObject({
+      organization_id: own.id, name: invitation.name, email: invitation.email,
+      role: "ORGANIZATION_ADMIN", team_id: null, deactivated_at: null,
+    });
+    expect(user!.id[14]).toBe("7");
+    expect(user!.password_hash).toMatch(/^\$argon2id\$/);
+    expect(await argon2.verify(user!.password_hash, password)).toBe(true);
+    expect(await db.selectFrom("sessions").select("id")
+      .where("organization_id", "=", own.id).where("user_id", "=", user!.id).execute()).toEqual([]);
+    const { token: _token, ...before } = invitation;
+    expect(await storedInvitation(invitation)).toEqual({ ...before, consumed_at: expect.any(Date) });
+    for (const secret of [invitation.token, invitation.token_hash, password, user!.password_hash]) {
+      expect(JSON.stringify(response.body)).not.toContain(secret);
+    }
+  });
+
+  it("rejects admin acceptance for an existing agent without converting the user", async () => {
+    const user = await userRepository.createUser(db, {
+      organizationId: own.id, name: "Existing agent", email: `${randomUUID()}@example.com`,
+      role: "AGENT", teamId: own.generalId, passwordHash: "test-only-hash",
+    });
+    const invitation = await invite({ role: "ORGANIZATION_ADMIN", email: user.email });
+    const before = await users(invitation);
+    expect((await accept(invitation.token).expect(409)).body).toEqual({ error: "A user with this email already exists" });
+    expect(await users(invitation)).toEqual(before);
+    expect((await storedInvitation(invitation)).consumed_at).toBeNull();
+  });
+
+  it("rejects a corrupt admin target team without consuming or creating a user", async () => {
+    const invitation = await invite({ role: "ORGANIZATION_ADMIN" });
+    const find = acceptanceRepository.findInvitationForAcceptance;
+    vi.spyOn(acceptanceRepository, "findInvitationForAcceptance").mockImplementationOnce(async (...args) => {
+      const row = await find(...args);
+      return { ...row!, targetTeamId: own.generalId };
+    });
+    const team = vi.spyOn(teamRepository, "findTeamForShare");
+    await expect(acceptInvitation({ token: invitation.token, password }))
+      .rejects.toThrow("Organization admin invitation must not have a target team");
+    expect(team).not.toHaveBeenCalled();
+    await expectUnchanged(invitation);
+  });
+
+  it("rejects an unsupported role even if corrupted persistence bypasses the lookup whitelist", async () => {
+    const invitation = await invite();
+    const find = acceptanceRepository.findInvitationForAcceptance;
+    vi.spyOn(acceptanceRepository, "findInvitationForAcceptance").mockImplementationOnce(async (...args) => {
+      const row = await find(...args);
+      return { ...row!, role: "CUSTOMER" } as unknown as NonNullable<typeof row>;
+    });
+    await expect(acceptInvitation({ token: invitation.token, password })).rejects.toThrow("Unsupported invitation role");
+    await expectUnchanged(invitation);
+  });
+
+  it("rejects unknown credentials before Argon2", async () => {
     const hash = vi.spyOn(argon2, "hash");
     expect((await accept(generateInvitationToken().token).expect(400)).body).toEqual({ error: "Invalid invitation token" });
-    expect((await accept(adminInvitation.token).expect(400)).body).toEqual({ error: "Invalid invitation token" });
     expect(hash).not.toHaveBeenCalled();
-    await expectUnchanged(adminInvitation);
   });
 
   it.each([
@@ -124,17 +190,19 @@ describe("public AGENT invitation acceptance", () => {
     ["revoked", 410, "Invitation has been revoked"],
     ["consumed", 409, "Invitation has already been used"],
   ] as const)("rejects a %s invitation without changing it", async (state, status, error) => {
-    const invitation = await invite({ state });
-    const response = await accept(invitation.token).expect(status);
-    expect(response.body).toEqual({ error });
-    await expectUnchanged(invitation);
+    for (const role of ["AGENT", "ORGANIZATION_ADMIN"] as const) {
+      const invitation = await invite({ state, role });
+      const response = await accept(invitation.token).expect(status);
+      expect(response.body).toEqual({ error });
+      await expectUnchanged(invitation);
+    }
   });
 
-  it("validates only token/password without echoing secrets or accepting identity overrides", async () => {
-    const invitation = await invite();
+  it.each(["AGENT", "ORGANIZATION_ADMIN"] as const)("validates only credentials for %s without accepting identity overrides", async (role) => {
+    const invitation = await invite({ role });
     const hash = vi.spyOn(argon2, "hash");
     for (const extra of [
-      { organizationId: other.id }, { role: "ORGANIZATION_ADMIN" }, { email: other.admin.email },
+      { organizationId: other.id }, { role: "ORGANIZATION_ADMIN" }, { role: "AGENT" }, { email: other.admin.email },
       { name: "Override" }, { teamId: other.generalId }, { passwordConfirmation: password },
       { password: "short" }, { password: "a".repeat(129) }, { token: "malformed-secret" },
       { token: { sensitive: invitation.token } }, { [invitation.token]: true },
@@ -161,9 +229,9 @@ describe("public AGENT invitation acceptance", () => {
     expect((await storedInvitation(invitation)).consumed_at).toBeNull();
   });
 
-  it("rejects an inactive organization inside acceptance", async () => {
+  it.each(["AGENT", "ORGANIZATION_ADMIN"] as const)("rejects an inactive organization during %s acceptance", async (role) => {
     const owner = await tenant();
-    const invitation = await invite({ owner });
+    const invitation = await invite({ owner, role });
     await deactivateOrganization(owner.id);
     expect((await accept(invitation.token).expect(409)).body).toEqual({ error: "Organization is deactivated" });
     await expectUnchanged(invitation);
@@ -214,15 +282,15 @@ describe("public AGENT invitation acceptance", () => {
 
   it("rolls back user creation when consumption cannot complete", async () => {
     const invitation = await invite();
-    vi.spyOn(acceptanceRepository, "consumeAgentInvitation").mockResolvedValueOnce(undefined);
+    vi.spyOn(acceptanceRepository, "consumeInvitation").mockResolvedValueOnce(undefined);
     await accept(invitation.token).expect(410);
     await expectUnchanged(invitation);
   });
 
-  it("rolls back both the inserted user and actual consumption if a later operation fails", async () => {
-    const invitation = await invite();
-    const consume = acceptanceRepository.consumeAgentInvitation;
-    vi.spyOn(acceptanceRepository, "consumeAgentInvitation").mockImplementationOnce(async (...args) => {
+  it.each(["AGENT", "ORGANIZATION_ADMIN"] as const)("rolls back the inserted %s and consumption if a later operation fails", async (role) => {
+    const invitation = await invite({ role });
+    const consume = acceptanceRepository.consumeInvitation;
+    vi.spyOn(acceptanceRepository, "consumeInvitation").mockImplementationOnce(async (...args) => {
       expect(await args[0].selectFrom("users").select("id")
         .where("organization_id", "=", own.id).where("email", "=", invitation.email).execute()).toHaveLength(1);
       expect(await consume(...args)).toEqual({ id: invitation.id });
@@ -232,8 +300,8 @@ describe("public AGENT invitation acceptance", () => {
     await expectUnchanged(invitation);
   });
 
-  it("serializes concurrent double acceptance into one user and one consumed invitation", async () => {
-    const invitation = await invite();
+  it.each(["AGENT", "ORGANIZATION_ADMIN"] as const)("serializes concurrent %s acceptance into one user and one consumed invitation", async (role) => {
+    const invitation = await invite({ role });
     const responses = await Promise.all([accept(invitation.token), accept(invitation.token)]);
     expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
     expect(responses.find((response) => response.status === 409)!.body).toEqual({ error: "Invitation has already been used" });
@@ -241,13 +309,14 @@ describe("public AGENT invitation acceptance", () => {
     expect((await storedInvitation(invitation)).consumed_at).toBeInstanceOf(Date);
   });
 
-  it("acceptance first makes a concurrent revoke observe consumption", async () => {
-    const invitation = await invite();
-    const find = acceptanceRepository.findAgentInvitationForAcceptance;
+  it.each(["AGENT", "ORGANIZATION_ADMIN"] as const)("%s acceptance first makes a concurrent revoke observe consumption", async (role) => {
+    const invitation = await invite({ role });
+    const find = acceptanceRepository.findInvitationForAcceptance;
     let revocation: Promise<unknown> | undefined;
-    vi.spyOn(acceptanceRepository, "findAgentInvitationForAcceptance").mockImplementationOnce(async (...args) => {
+    vi.spyOn(acceptanceRepository, "findInvitationForAcceptance").mockImplementationOnce(async (...args) => {
       const row = await find(...args);
-      revocation = revokeInvitation(own.id, invitation.id).catch((error: unknown) => error);
+      const revoke = role === "AGENT" ? revokeInvitation : revokeAdminInvitation;
+      revocation = revoke(own.id, invitation.id).catch((error: unknown) => error);
       await waitForLock("tenant_user_invitations", "for update");
       return row;
     });
@@ -309,7 +378,7 @@ describe("public AGENT invitation acceptance", () => {
     });
     try {
       await deactivateTeam(own.id, team.id);
-      expect((await acceptance)!.team.id).toBe(own.generalId);
+      expect((await acceptance)!.team!.id).toBe(own.generalId);
       expect((await users(invitation))[0]).toMatchObject({ deactivated_at: null, team_id: own.generalId });
     } finally { if (acceptance) await Promise.allSettled([acceptance]); }
   }, 15_000);
