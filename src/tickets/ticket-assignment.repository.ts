@@ -1,9 +1,93 @@
-import type { Kysely, Transaction } from "kysely";
+import type { ExpressionBuilder, Kysely, Transaction } from "kysely";
 import { sql } from "kysely";
 
 import type { Database } from "../database/types.js";
 
 type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
+
+// Return the mutation's row, even when release removes the caller's visibility.
+function assignmentResult(eb: ExpressionBuilder<Database, "tickets">) {
+  return [
+    "tickets.id",
+    "tickets.subject",
+    "tickets.status",
+    "tickets.priority",
+    "tickets.created_at as createdAt",
+    "tickets.updated_at as updatedAt",
+    "tickets.closed_at as closedAt",
+    "tickets.assigned_team_id as assignedTeamId",
+    "tickets.assigned_agent_id as assignedAgentId",
+    eb
+      .selectFrom("users as customer")
+      .select("customer.name")
+      .whereRef("customer.organization_id", "=", "tickets.organization_id")
+      .whereRef("customer.id", "=", "tickets.customer_id")
+      .as("customerName"),
+    eb
+      .selectFrom("teams as assigned_team")
+      .select("assigned_team.name")
+      .whereRef("assigned_team.organization_id", "=", "tickets.organization_id")
+      .whereRef("assigned_team.id", "=", "tickets.assigned_team_id")
+      .as("assignedTeamName"),
+    eb
+      .selectFrom("users as assigned_agent")
+      .select("assigned_agent.name")
+      .whereRef(
+        "assigned_agent.organization_id",
+        "=",
+        "tickets.organization_id",
+      )
+      .whereRef("assigned_agent.id", "=", "tickets.assigned_agent_id")
+      .as("assignedAgentName"),
+  ] as const;
+}
+
+export async function attemptReleaseTicket(
+  executor: DatabaseExecutor,
+  organizationId: string,
+  agentId: string,
+  ticketId: string,
+) {
+  return (
+    executor
+      .updateTable("tickets")
+      .set({
+        assigned_agent_id: null,
+        updated_at: sql<Date>`greatest(updated_at, clock_timestamp())`,
+      })
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", ticketId)
+      .where("voided_at", "is", null)
+      .where("status", "in", ["OPEN", "IN_PROGRESS"])
+      .where("assigned_agent_id", "=", agentId)
+      .returning(assignmentResult)
+      // The required tenant-qualified customer FK guarantees a customer name.
+      .$narrowType<{ customerName: string }>()
+      .executeTakeFirst()
+  );
+}
+
+export async function replaceTicketAssignment(
+  executor: DatabaseExecutor,
+  organizationId: string,
+  ticketId: string,
+  assignment: { teamId: string | null; agentId: string | null },
+) {
+  return executor
+    .updateTable("tickets")
+    .set({
+      assigned_team_id: assignment.teamId,
+      assigned_agent_id: assignment.agentId,
+      updated_at: sql<Date>`greatest(updated_at, clock_timestamp())`,
+    })
+    .where("organization_id", "=", organizationId)
+    .where("id", "=", ticketId)
+    .where("voided_at", "is", null)
+    .where("status", "in", ["OPEN", "IN_PROGRESS"])
+    .returning(assignmentResult)
+    .$narrowType<{ customerName: string }>()
+    .executeTakeFirst();
+}
 
 export async function attemptClaimTicket(
   executor: DatabaseExecutor,

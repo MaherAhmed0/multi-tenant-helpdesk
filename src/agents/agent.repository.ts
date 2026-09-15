@@ -116,6 +116,21 @@ export async function findAgentForUpdate(
     .executeTakeFirst();
 }
 
+export async function findAgentForShare(
+  executor: DatabaseExecutor,
+  organizationId: string,
+  agentId: string,
+) {
+  return executor
+    .selectFrom("users")
+    .select(["id", "team_id as teamId", "deactivated_at as deactivatedAt"])
+    .where("organization_id", "=", organizationId)
+    .where("id", "=", agentId)
+    .where("role", "=", "AGENT")
+    .forShare()
+    .executeTakeFirst();
+}
+
 export async function markAgentDeactivated(
   executor: DatabaseExecutor,
   organizationId: string,

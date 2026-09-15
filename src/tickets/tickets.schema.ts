@@ -9,6 +9,12 @@ export const createTicketSchema = z
 
 export const ticketParamsSchema = z.object({ ticketId: z.uuid() }).strict();
 export const ticketClaimSchema = z.object({}).strict();
+export const ticketReleaseSchema = z.object({}).strict();
+export const ticketAssignmentSchema = z.object({
+  teamId: z.uuid().nullable(),
+  agentId: z.uuid().nullable(),
+}).strict();
+export type TicketAssignmentInput = z.infer<typeof ticketAssignmentSchema>;
 
 export const ticketMessageSchema = createTicketSchema
   .pick({ message: true })

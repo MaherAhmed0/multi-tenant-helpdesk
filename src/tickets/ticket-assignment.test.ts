@@ -77,6 +77,12 @@ function userState(id: string) {
 function claim(id: string, actor = agent) {
   return request(app).post(`/tickets/${id}/claim`).set("Cookie", actor.cookie).set("X-CSRF-Token", actor.csrf);
 }
+function release(id: string, actor = agent) {
+  return request(app).post(`/tickets/${id}/release`).set("Cookie", actor.cookie).set("X-CSRF-Token", actor.csrf);
+}
+function assign(id: string, body: { teamId: string | null; agentId: string | null }, actor = admin) {
+  return request(app).put(`/tickets/${id}/assignment`).set("Cookie", actor.cookie).set("X-CSRF-Token", actor.csrf).send(body);
+}
 async function freshAgent() {
   const team = await createNormalTeam(db, own.id, `Team ${randomUUID()}`);
   return { team, actor: await principal(own, "AGENT", team.id) };
@@ -301,6 +307,214 @@ describe("claim coordination with lifecycle user locks", () => {
         assigned_team_id: action === "team" ? null : team.id,
         assigned_agent_id: action === "team" ? actor.id : null,
       });
+    } finally { await pending; }
+  }, 10000);
+});
+
+describe("agent self-release", () => {
+  it.each([false, true])("releases only the individual assignment (team retained=%s)", async (hasTeam) => {
+    const ticket = await seedTicket({ assigned_agent_id: agent.id, assigned_team_id: hasTeam ? own.team.id : null,
+      status: hasTeam ? "IN_PROGRESS" : "OPEN" });
+    const result = await release(ticket.id).expect(200);
+    expect(result.body).toEqual({
+      id: ticket.id, subject: ticket.subject, status: ticket.status, priority: "HIGH", closedAt: null,
+      createdAt: ticket.created_at.toISOString(), updatedAt: expect.any(String), customer: { name: customer.name },
+      assignedAgent: null, assignedTeam: hasTeam ? { id: own.team.id, name: "General" } : null,
+    });
+    expect(await ticketState(ticket.id)).toEqual({ ...ticket, assigned_agent_id: null, updated_at: expect.any(Date) });
+    expect(new Date(result.body.updatedAt).getTime()).toBeGreaterThan(ticket.updated_at.getTime());
+    await release(ticket.id).expect(409);
+  });
+
+  it("conceals inaccessible tickets and refuses visible assignments it cannot release", async () => {
+    const hidden = [await seedTicket({ assigned_agent_id: colleague.id }), await foreignTicket(),
+      await seedTicket({ assigned_agent_id: agent.id, voided_at: new Date(), voided_by_user_id: admin.id, void_reason: "SPAM" })];
+    for (const ticket of hidden) {
+      expect((await release(ticket.id).expect(404)).body).toEqual({ error: "Ticket not found" });
+      expect(await ticketState(ticket.id)).toEqual(ticket);
+    }
+    const visible = [await seedTicket({ assigned_team_id: own.team.id, assigned_agent_id: colleague.id }),
+      await seedTicket({ assigned_agent_id: agent.id, status: "RESOLVED" }),
+      await seedTicket({ assigned_agent_id: agent.id, status: "CLOSED", closed_at: new Date() })];
+    for (const ticket of visible) {
+      expect((await release(ticket.id).expect(409)).body).toEqual({ error: "Ticket is not releasable" });
+      expect(await ticketState(ticket.id)).toEqual(ticket);
+    }
+  });
+
+  it("requires AGENT authentication, CSRF, UUID params and an empty body", async () => {
+    const ticket = await seedTicket({ assigned_agent_id: agent.id });
+    await request(app).post(`/tickets/${ticket.id}/release`).expect(401);
+    for (const actor of [customer, admin]) await release(ticket.id, actor).expect(403);
+    await request(app).post(`/tickets/${ticket.id}/release`).set("Cookie", agent.cookie).expect(403);
+    await request(app).post(`/tickets/${ticket.id}/release`).set("Cookie", agent.cookie).set("X-CSRF-Token", "invalid").expect(403);
+    for (const body of [{ agentId: agent.id }, { teamId: null }, { organizationId: own.id }, { status: "OPEN" }]) {
+      await release(ticket.id).send(body).expect(400);
+    }
+    await release("invalid").expect(400);
+    expect(await ticketState(ticket.id)).toEqual(ticket);
+  });
+
+  it("does not clear a newer assignment after waiting on a concurrent ticket UPDATE", async () => {
+    const ticket = await seedTicket({ assigned_team_id: own.team.id, assigned_agent_id: agent.id });
+    let pending: Promise<request.Response> | undefined;
+    try {
+      await db.transaction().execute(async (trx) => {
+        await assignments.replaceTicketAssignment(trx, own.id, ticket.id, { teamId: own.team.id, agentId: colleague.id });
+        pending = release(ticket.id).then((response) => response);
+        void pending.catch(() => {});
+        await vi.waitFor(async () => {
+          const waiting = await sql<{ count: string }>`select count(*) from pg_stat_activity
+            where datname = current_database() and usename = current_user and wait_event_type = 'Lock'
+            and query like 'update "tickets"%'`.execute(db);
+          expect(Number(waiting.rows[0]!.count)).toBe(1);
+        }, { timeout: 5000, interval: 20 });
+      });
+      expect((await pending)!.status).toBe(409);
+      expect(await ticketState(ticket.id)).toMatchObject({ assigned_team_id: own.team.id, assigned_agent_id: colleague.id });
+    } finally { await pending; }
+  }, 10000);
+});
+
+describe("organization-admin assignment replacement", () => {
+  it("replaces the complete state with team-only, agent-only, both, or neither", async () => {
+    const ticket = await seedTicket({ status: "IN_PROGRESS", assigned_agent_id: colleague.id });
+    for (const desired of [
+      { teamId: own.team.id, agentId: null }, { teamId: null, agentId: agent.id },
+      { teamId: own.team.id, agentId: agent.id }, { teamId: null, agentId: null },
+    ]) {
+      const result = await assign(ticket.id, desired).expect(200);
+      expect(result.body).toEqual({
+        id: ticket.id, subject: ticket.subject, status: "IN_PROGRESS", priority: "HIGH", closedAt: null,
+        createdAt: ticket.created_at.toISOString(), updatedAt: expect.any(String), customer: { name: customer.name },
+        assignedTeam: desired.teamId ? { id: own.team.id, name: "General" } : null,
+        assignedAgent: desired.agentId ? { id: agent.id, name: agent.name } : null,
+      });
+      expect(await ticketState(ticket.id)).toEqual({ ...ticket, assigned_team_id: desired.teamId,
+        assigned_agent_id: desired.agentId, updated_at: expect.any(Date) });
+    }
+  });
+
+  it("rejects inactive, foreign, nonexistent, non-AGENT, and mismatched targets", async () => {
+    const ticket = await seedTicket();
+    const { actor, team } = await freshAgent();
+    await deactivateAgent(own.id, actor.id);
+    await deactivateTeam(own.id, team.id);
+    const cases = [
+      { teamId: team.id, agentId: null, status: 409 },
+      { teamId: null, agentId: actor.id, status: 409 },
+      { teamId: other.team.id, agentId: null, status: 404 },
+      { teamId: null, agentId: foreignAgent.id, status: 404 },
+      { teamId: randomUUID(), agentId: null, status: 404 },
+      { teamId: null, agentId: randomUUID(), status: 404 },
+      { teamId: null, agentId: customer.id, status: 404 },
+      { teamId: null, agentId: admin.id, status: 404 },
+      { teamId: (await createNormalTeam(db, own.id, `Mismatch ${randomUUID()}`)).id, agentId: agent.id, status: 409 },
+    ];
+    for (const { status, ...desired } of cases) {
+      await assign(ticket.id, desired).expect(status);
+      expect(await ticketState(ticket.id)).toEqual(ticket);
+    }
+  });
+
+  it("hides foreign/voided tickets and refuses resolved/closed tickets", async () => {
+    for (const ticket of [await foreignTicket(),
+      await seedTicket({ voided_at: new Date(), voided_by_user_id: admin.id, void_reason: "SPAM" })]) {
+      expect((await assign(ticket.id, { teamId: null, agentId: null }).expect(404)).body).toEqual({ error: "Ticket not found" });
+      expect(await ticketState(ticket.id)).toEqual(ticket);
+    }
+    for (const status of ["RESOLVED", "CLOSED"] as const) {
+      const ticket = await seedTicket({ status, closed_at: status === "CLOSED" ? new Date() : null });
+      await assign(ticket.id, { teamId: null, agentId: agent.id }).expect(409);
+      expect(await ticketState(ticket.id)).toEqual(ticket);
+    }
+  });
+
+  it("requires organization-admin authentication, CSRF and both strict assignment fields", async () => {
+    const ticket = await seedTicket();
+    const desired = { teamId: null, agentId: null };
+    await request(app).put(`/tickets/${ticket.id}/assignment`).send(desired).expect(401);
+    for (const actor of [agent, customer]) await assign(ticket.id, desired, actor).expect(403);
+    await request(app).put(`/tickets/${ticket.id}/assignment`).set("Cookie", admin.cookie).send(desired).expect(403);
+    await request(app).put(`/tickets/${ticket.id}/assignment`).set("Cookie", admin.cookie).set("X-CSRF-Token", agent.csrf).send(desired).expect(403);
+    for (const body of [{}, { teamId: null }, { agentId: null }, { ...desired, status: "OPEN" },
+      { ...desired, organizationId: own.id }, { ...desired, agentId: "invalid" }, { ...desired, teamId: "invalid" }]) {
+      await request(app).put(`/tickets/${ticket.id}/assignment`).set("Cookie", admin.cookie).set("X-CSRF-Token", admin.csrf).send(body).expect(400);
+    }
+    await assign("invalid", desired).expect(400);
+    expect(await ticketState(ticket.id)).toEqual(ticket);
+  });
+
+  it("rechecks workflow eligibility in the UPDATE after an earlier visible read", async () => {
+    const ticket = await seedTicket();
+    const original = staffTickets.findOrganizationTicketById;
+    vi.spyOn(staffTickets, "findOrganizationTicketById").mockImplementationOnce(async (...args) => {
+      const row = await original(...args);
+      await db.updateTable("tickets").set({ status: "CLOSED", closed_at: new Date() }).where("id", "=", ticket.id).execute();
+      return row;
+    });
+    await assign(ticket.id, { teamId: own.team.id, agentId: agent.id }).expect(409);
+    expect(await ticketState(ticket.id)).toMatchObject({ status: "CLOSED", assigned_agent_id: null, assigned_team_id: null });
+  });
+
+  it.each(["deactivate", "reassign", "team"] as const)("holds validation locks until commit before racing %s cleanup", async (action) => {
+    const { actor, team } = await freshAgent();
+    const ticket = await seedTicket();
+    let unlock!: () => void;
+    let reached!: () => void;
+    const hold = new Promise<void>((resolve) => { unlock = resolve; });
+    const locked = new Promise<void>((resolve) => { reached = resolve; });
+    const original = assignments.replaceTicketAssignment;
+    vi.spyOn(assignments, "replaceTicketAssignment").mockImplementationOnce(async (...args) => {
+      reached();
+      await hold;
+      return original(...args);
+    });
+    const pendingAssignment = assign(ticket.id, { teamId: team.id, agentId: actor.id }).then((response) => response);
+    let lifecycle: Promise<unknown> | undefined;
+    try {
+      await locked;
+      lifecycle = action === "deactivate" ? deactivateAgent(own.id, actor.id)
+        : action === "reassign" ? reassignAgentTeam(own.id, actor.id, own.team.id) : deactivateTeam(own.id, team.id);
+      void lifecycle.catch(() => {});
+      await vi.waitFor(async () => {
+        const waiting = await sql<{ count: string }>`select count(*) from pg_stat_activity
+          where datname = current_database() and usename = current_user and wait_event_type = 'Lock'`.execute(db);
+        expect(Number(waiting.rows[0]!.count)).toBe(1);
+      }, { timeout: 5000, interval: 20 });
+      unlock();
+      expect((await pendingAssignment).status).toBe(200);
+      await lifecycle;
+      expect(await ticketState(ticket.id)).toMatchObject({
+        assigned_team_id: action === "team" ? null : team.id,
+        assigned_agent_id: action === "team" ? actor.id : null,
+      });
+    } finally { unlock(); await Promise.allSettled([pendingAssignment, lifecycle]); }
+  }, 10000);
+
+  it.each(["deactivate", "reassign", "team"] as const)("revalidates target state when %s wins the row lock first", async (action) => {
+    const { actor, team } = await freshAgent();
+    const ticket = await seedTicket();
+    let pending: Promise<request.Response> | undefined;
+    try {
+      await db.transaction().execute(async (trx) => {
+        if (action === "team") {
+          await trx.updateTable("teams").set({ deactivated_at: new Date() }).where("id", "=", team.id).execute();
+        } else {
+          await trx.updateTable("users").set(action === "deactivate" ? { deactivated_at: new Date() } : { team_id: own.team.id })
+            .where("id", "=", actor.id).execute();
+        }
+        pending = assign(ticket.id, { teamId: team.id, agentId: actor.id }).then((response) => response);
+        void pending.catch(() => {});
+        await vi.waitFor(async () => {
+          const waiting = await sql<{ count: string }>`select count(*) from pg_stat_activity
+            where datname = current_database() and usename = current_user and wait_event_type = 'Lock'
+            and query like '%for share%'`.execute(db);
+          expect(Number(waiting.rows[0]!.count)).toBe(1);
+        }, { timeout: 5000, interval: 20 });
+      });
+      expect((await pending)!.status).toBe(409);
+      expect(await ticketState(ticket.id)).toEqual(ticket);
     } finally { await pending; }
   }, 10000);
 });

@@ -1,6 +1,12 @@
 import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
-import { attemptClaimTicket } from "./ticket-assignment.repository.js";
+import {
+  attemptClaimTicket,
+  attemptReleaseTicket,
+  replaceTicketAssignment,
+} from "./ticket-assignment.repository.js";
+import { findAgentForShare } from "../agents/agent.repository.js";
+import { findTeamForShare } from "../teams/team.repository.js";
 import type { AuthContext } from "../auth/sessions/session-auth.service.js";
 import {
   createTicket,
@@ -24,6 +30,7 @@ import type {
   CreateTicketInput,
   TicketListInput,
   TicketMessageInput,
+  TicketAssignmentInput,
 } from "./tickets.schema.js";
 
 function publicMessage(
@@ -183,6 +190,77 @@ export async function claimTicket(auth: AuthContext, ticketId: string) {
   );
   if (!claimed) throw new AppError(409, "Ticket is not claimable");
   return staffTicket(claimed);
+}
+
+export async function releaseTicket(auth: AuthContext, ticketId: string) {
+  if (auth.role !== "AGENT") throw new AppError(403, "Request forbidden");
+  const visible = await findAgentTicketById(
+    db,
+    auth.organizationId,
+    auth.userId,
+    ticketId,
+  );
+  if (!visible) throw new AppError(404, "Ticket not found");
+  const released = await attemptReleaseTicket(
+    db,
+    auth.organizationId,
+    auth.userId,
+    ticketId,
+  );
+  if (!released) throw new AppError(409, "Ticket is not releasable");
+  return staffTicket(released);
+}
+
+export async function updateTicketAssignment(
+  auth: AuthContext,
+  ticketId: string,
+  input: TicketAssignmentInput,
+) {
+  if (auth.role !== "ORGANIZATION_ADMIN")
+    throw new AppError(403, "Request forbidden");
+  return db.transaction().execute(async (trx) => {
+    const visible = await findOrganizationTicketById(
+      trx,
+      auth.organizationId,
+      ticketId,
+    );
+    if (!visible) throw new AppError(404, "Ticket not found");
+
+    // Referenced team -> agent -> ticket, matching team lifecycle and reassignment.
+    // Hold validation locks until the conditional ticket UPDATE commits.
+    if (input.teamId !== null) {
+      const team = await findTeamForShare(
+        trx,
+        auth.organizationId,
+        input.teamId,
+      );
+      if (!team) throw new AppError(404, "Team not found");
+      if (team.deactivatedAt !== null)
+        throw new AppError(409, "Cannot assign a deactivated team");
+    }
+    if (input.agentId !== null) {
+      const agent = await findAgentForShare(
+        trx,
+        auth.organizationId,
+        input.agentId,
+      );
+      if (!agent) throw new AppError(404, "Agent not found");
+      if (agent.deactivatedAt !== null)
+        throw new AppError(409, "Cannot assign a deactivated agent");
+      if (input.teamId !== null && agent.teamId !== input.teamId) {
+        throw new AppError(409, "Agent does not belong to the selected team");
+      }
+    }
+    const updated = await replaceTicketAssignment(
+      trx,
+      auth.organizationId,
+      ticketId,
+      input,
+    );
+    if (!updated)
+      throw new AppError(409, "Ticket assignment cannot be changed");
+    return staffTicket(updated);
+  });
 }
 
 export async function addCustomerMessage(

@@ -6,6 +6,8 @@ import {
   ticketListSchema,
   ticketParamsSchema,
   ticketClaimSchema,
+  ticketReleaseSchema,
+  ticketAssignmentSchema,
   ticketMessageSchema,
 } from "./tickets.schema.js";
 import {
@@ -13,6 +15,8 @@ import {
   getTicket,
   listTickets,
   claimTicket,
+  releaseTicket,
+  updateTicketAssignment,
   addCustomerMessage,
 } from "./tickets.service.js";
 
@@ -67,6 +71,42 @@ export async function claimTicketController(
   if (!body.success)
     throw new AppError(400, "Invalid ticket claim", body.error.issues);
   const ticket = await claimTicket(req.auth, params.data.ticketId);
+  res.set("Cache-Control", "no-store");
+  res.status(200).json(ticket);
+}
+
+export async function releaseTicketController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.auth) throw new Error("Authenticated request context is missing");
+  const params = ticketParamsSchema.safeParse(req.params);
+  if (!params.success)
+    throw new AppError(400, "Invalid ticket ID", params.error.issues);
+  const body = ticketReleaseSchema.safeParse(req.body ?? {});
+  if (!body.success)
+    throw new AppError(400, "Invalid ticket release", body.error.issues);
+  const ticket = await releaseTicket(req.auth, params.data.ticketId);
+  res.set("Cache-Control", "no-store");
+  res.status(200).json(ticket);
+}
+
+export async function updateTicketAssignmentController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.auth) throw new Error("Authenticated request context is missing");
+  const params = ticketParamsSchema.safeParse(req.params);
+  if (!params.success)
+    throw new AppError(400, "Invalid ticket ID", params.error.issues);
+  const body = ticketAssignmentSchema.safeParse(req.body);
+  if (!body.success)
+    throw new AppError(400, "Invalid ticket assignment", body.error.issues);
+  const ticket = await updateTicketAssignment(
+    req.auth,
+    params.data.ticketId,
+    body.data,
+  );
   res.set("Cache-Control", "no-store");
   res.status(200).json(ticket);
 }
