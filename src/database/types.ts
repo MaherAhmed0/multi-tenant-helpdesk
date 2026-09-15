@@ -2,6 +2,14 @@ import type { ColumnType, Generated } from "kysely";
 
 export type TenantRole = "ORGANIZATION_ADMIN" | "AGENT" | "CUSTOMER";
 
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type TicketPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type TicketVoidReason =
+  | "CUSTOMER_WITHDRAWN"
+  | "INVALID"
+  | "SPAM"
+  | "DUPLICATE";
+
 type GeneratedImmutable<T> = ColumnType<T, T | undefined, never>;
 
 type Immutable<T> = ColumnType<T, T, never>;
@@ -136,11 +144,57 @@ export interface SystemAdminSessionsTable {
   user_agent: string | null;
 }
 
+// Services must enforce CUSTOMER ownership, AGENT assignment, active assignees/teams,
+// and membership when both team and agent are assigned. On agent team reassignment,
+// clear the agent from tickets assigned to the old team, preserving that team;
+// agent-only ticket assignments remain intact. Initial description is a message,
+// inserted in the same future service transaction as its ticket.
+export interface TicketsTable {
+  id: GeneratedImmutable<string>;
+  organization_id: Immutable<string>;
+  customer_id: Immutable<string>;
+  subject: string;
+  status: Generated<TicketStatus>;
+  priority: Generated<TicketPriority>;
+  assigned_team_id: string | null;
+  assigned_agent_id: string | null;
+  voided_at: Date | null;
+  voided_by_user_id: string | null;
+  void_reason: TicketVoidReason | null;
+  created_at: GeneratedImmutable<Date>;
+  updated_at: Generated<Date>;
+  closed_at: Date | null;
+}
+
+export interface TicketMessagesTable {
+  id: GeneratedImmutable<string>;
+  organization_id: Immutable<string>;
+  ticket_id: Immutable<string>;
+  author_user_id: Immutable<string>;
+  body: Immutable<string>;
+  created_at: GeneratedImmutable<Date>;
+}
+
+// Services restrict visibility to staff and edits to the original author,
+// including after ticket closure. Runtime grants permit only body/timestamp edits.
+export interface TicketInternalNotesTable {
+  id: GeneratedImmutable<string>;
+  organization_id: Immutable<string>;
+  ticket_id: Immutable<string>;
+  author_user_id: Immutable<string>;
+  body: string;
+  created_at: GeneratedImmutable<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface Database {
   organizations: OrganizationsTable;
   users: UsersTable;
   teams: TeamsTable;
   tenant_user_invitations: TenantUserInvitationsTable;
+  tickets: TicketsTable;
+  ticket_messages: TicketMessagesTable;
+  ticket_internal_notes: TicketInternalNotesTable;
   sessions: SessionsTable;
   login_throttles: LoginThrottlesTable;
   system_admins: SystemAdminsTable;

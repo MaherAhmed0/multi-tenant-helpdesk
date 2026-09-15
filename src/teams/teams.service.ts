@@ -13,6 +13,7 @@ import {
   markTeamReactivated,
 } from "./team.repository.js";
 import { moveActiveTeamAgents } from "./team-agent.repository.js";
+import { clearTeamTicketAssignments } from "../tickets/ticket-assignment.repository.js";
 import type { TeamListInput } from "./teams.schema.js";
 
 function rethrowTeamWriteError(error: unknown): never {
@@ -73,6 +74,9 @@ export async function deactivateTeam(organizationId: string, teamId: string) {
     if (!general) throw new Error("Organization General team is missing");
 
     await moveActiveTeamAgents(trx, organizationId, teamId, general.id);
+    // Clear the old ticket team after locking/moving its active users, preserving
+    // valid individual assignees. Both changes become visible together at commit.
+    await clearTeamTicketAssignments(trx, organizationId, teamId);
     return markTeamDeactivated(trx, organizationId, teamId);
   });
 }

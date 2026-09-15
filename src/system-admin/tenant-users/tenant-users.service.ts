@@ -9,6 +9,7 @@ import {
   reactivatePlatformTenantUser,
 } from "./platform-tenant-users.repository.js";
 import { revokePlatformTenantUserSessions } from "./platform-tenant-user-sessions.repository.js";
+import { clearAgentTicketAssignments } from "../../tickets/ticket-assignment.repository.js";
 
 export async function deactivateTenantUser(userId: string): Promise<void> {
   await db.transaction().execute(async (trx) => {
@@ -52,6 +53,7 @@ export async function deactivateTenantUser(userId: string): Promise<void> {
     );
     if (!deactivated) throw new AppError(404, "Tenant user not found");
     await revokePlatformTenantUserSessions(trx, user.organizationId, user.id);
+    if (user.role === "AGENT") await clearAgentTicketAssignments(trx, user.organizationId, user.id);
   });
 }
 

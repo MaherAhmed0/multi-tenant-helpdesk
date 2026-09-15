@@ -10,6 +10,7 @@ import {
 } from "./agent.repository.js";
 import { findTeamForShare, findGeneralTeam } from "../teams/team.repository.js";
 import { revokeAccountSessions } from "../auth/sessions/session.repository.js";
+import { clearAgentTicketAssignments, clearIncompatibleAgentTicketAssignments } from "../tickets/ticket-assignment.repository.js";
 import type { AgentListInput } from "./agents.schema.js";
 
 type AgentRow = NonNullable<Awaited<ReturnType<typeof findAgent>>>;
@@ -74,6 +75,7 @@ export async function reassignAgentTeam(
 
     const updated = await updateAgentTeam(trx, organizationId, agentId, teamId);
     if (!updated) throw new AppError(404, "Agent not found");
+    await clearIncompatibleAgentTicketAssignments(trx, organizationId, agentId, teamId);
     const agent = await findAgent(trx, organizationId, agentId);
     if (!agent) throw new Error("Updated agent is missing");
     return agentRepresentation(agent);
@@ -93,6 +95,7 @@ export async function deactivateAgent(organizationId: string, agentId: string) {
       userId: locked.id,
       revokedAt: new Date(),
     });
+    await clearAgentTicketAssignments(trx, organizationId, locked.id);
     const agent = await findAgent(trx, organizationId, locked.id);
     if (!agent) throw new Error("Updated agent is missing");
     return agentRepresentation(agent);
