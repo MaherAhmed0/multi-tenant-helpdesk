@@ -16,25 +16,58 @@ import { systemAdminOrganizationsRouter } from "./system-admin/organizations/org
 import { systemAdminOverviewRouter } from "./system-admin/overview/overview.routes.js";
 import { systemAdminTenantUsersRouter } from "./system-admin/tenant-users/tenant-users.routes.js";
 import cookieParser from "cookie-parser";
+import {
+  requestContextMiddleware,
+  captureRequestRoutePrefix,
+} from "./observability/request.middleware.js";
 
 export const app = express();
 
+app.use(requestContextMiddleware);
 app.use(express.json());
 app.use(cookieParser());
 
-app.use("/health", healthRouter);
-app.use("/organization-registration", registrationRouter);
-app.use("/auth", authRouter);
-app.use("/teams", teamsRouter);
-app.use("/agents", agentsRouter);
-app.use("/agent-invitations", agentInvitationsRouter);
-app.use("/organization-admin-invitations", organizationAdminInvitationsRouter);
-app.use("/invitations", invitationsRouter);
-app.use("/public/organizations", customerOnboardingRouter);
-app.use("/tickets", ticketsRouter);
-app.use("/system-admin/auth", systemAdminAuthRouter);
-app.use("/system-admin/organizations", systemAdminOrganizationsRouter);
-app.use("/system-admin/overview", systemAdminOverviewRouter);
-app.use("/system-admin/tenant-users", systemAdminTenantUsersRouter);
+app.use("/health", captureRequestRoutePrefix, healthRouter);
+app.use(
+  "/organization-registration",
+  captureRequestRoutePrefix,
+  registrationRouter,
+);
+app.use("/auth", captureRequestRoutePrefix, authRouter);
+app.use("/teams", captureRequestRoutePrefix, teamsRouter);
+app.use("/agents", captureRequestRoutePrefix, agentsRouter);
+app.use(
+  "/agent-invitations",
+  captureRequestRoutePrefix,
+  agentInvitationsRouter,
+);
+app.use(
+  "/organization-admin-invitations",
+  captureRequestRoutePrefix,
+  organizationAdminInvitationsRouter,
+);
+app.use("/invitations", captureRequestRoutePrefix, invitationsRouter);
+app.use(
+  "/public/organizations",
+  captureRequestRoutePrefix,
+  customerOnboardingRouter,
+);
+app.use("/tickets", captureRequestRoutePrefix, ticketsRouter);
+app.use("/system-admin/auth", captureRequestRoutePrefix, systemAdminAuthRouter);
+app.use(
+  "/system-admin/organizations",
+  captureRequestRoutePrefix,
+  systemAdminOrganizationsRouter,
+);
+app.use(
+  "/system-admin/overview",
+  captureRequestRoutePrefix,
+  systemAdminOverviewRouter,
+);
+app.use(
+  "/system-admin/tenant-users",
+  captureRequestRoutePrefix,
+  systemAdminTenantUsersRouter,
+);
 
 app.use(errorMiddleware);

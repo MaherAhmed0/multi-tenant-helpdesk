@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 
 import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
+import { setRequestActor } from "../observability/request-context.js";
 import {
   SYSTEM_ADMIN_SESSION_COOKIE_NAME,
   getSystemAdminSessionCookieOptions,
@@ -52,5 +53,9 @@ export async function requireSystemAdminAuthentication(
     sessionId: session.sessionId,
     email: session.email,
   };
+  setRequestActor({
+    actorId: session.systemAdminId,
+    actorRole: "SYSTEM_ADMIN",
+  });
   next();
 }

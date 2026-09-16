@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { AppError } from "../errors/app-error.js";
+import { setRequestActor } from "../observability/request-context.js";
 import { authenticateSession } from "./sessions/session-auth.service.js";
 
 export async function requireAuthentication(
@@ -21,6 +22,7 @@ export async function requireAuthentication(
   }
 
   req.auth = auth;
+  setRequestActor({ organizationId: auth.organizationId, actorId: auth.userId, actorRole: auth.role });
 
   next();
 }
