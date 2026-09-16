@@ -1,6 +1,13 @@
 import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
 import {
+  attemptCustomerWithdrawTicket,
+  attemptAdminVoidTicket,
+  attemptAgentVoidTicket,
+  attemptRestoreTicket,
+  type StaffVoidReason,
+} from "./ticket-validity.repository.js";
+import {
   findOrganizationTicketForReplyUpdate,
   findAgentTicketForReplyUpdate,
   touchStaffReplyTicket,
@@ -84,6 +91,85 @@ export async function createCustomerTicket(
     });
     return { ...ticket, messages: [publicMessage(message)] };
   });
+}
+
+export async function withdrawTicket(auth: AuthContext, ticketId: string) {
+  if (auth.role !== "CUSTOMER") throw new AppError(403, "Request forbidden");
+  const updated = await attemptCustomerWithdrawTicket(
+    db,
+    auth.organizationId,
+    auth.userId,
+    ticketId,
+  );
+  if (!updated) {
+    const visible = await findCustomerTicketById(
+      db,
+      auth.organizationId,
+      auth.userId,
+      ticketId,
+    );
+    if (!visible) throw new AppError(404, "Ticket not found");
+    throw new AppError(409, "Ticket cannot be withdrawn");
+  }
+  return { id: updated.id, withdrawn: true };
+}
+
+export async function voidTicket(
+  auth: AuthContext,
+  ticketId: string,
+  reason: StaffVoidReason,
+) {
+  if (auth.role !== "AGENT" && auth.role !== "ORGANIZATION_ADMIN")
+    throw new AppError(403, "Request forbidden");
+  if (!["INVALID", "SPAM", "DUPLICATE"].includes(reason))
+    throw new AppError(400, "Invalid ticket void reason");
+  if (auth.role === "ORGANIZATION_ADMIN") {
+    const updated = await attemptAdminVoidTicket(
+      db,
+      auth.organizationId,
+      ticketId,
+      auth.userId,
+      reason,
+    );
+    if (!updated) throw new AppError(404, "Ticket not found");
+    return { id: updated.id, voided: true, reason };
+  }
+  return db.transaction().execute(async (trx) => {
+    // Actor before ticket, matching status/priority and lifecycle cleanup locks.
+    const agent = await findAgentForShare(
+      trx,
+      auth.organizationId,
+      auth.userId,
+    );
+    if (!agent || agent.deactivatedAt !== null)
+      throw new AppError(401, "Authentication required");
+    const updated = await attemptAgentVoidTicket(
+      trx,
+      auth.organizationId,
+      ticketId,
+      agent,
+      reason,
+    );
+    if (!updated) {
+      const visible = await findAgentTicketById(
+        trx,
+        auth.organizationId,
+        auth.userId,
+        ticketId,
+      );
+      if (!visible) throw new AppError(404, "Ticket not found");
+      throw new AppError(409, "Ticket cannot be voided");
+    }
+    return { id: updated.id, voided: true, reason };
+  });
+}
+
+export async function restoreTicket(auth: AuthContext, ticketId: string) {
+  if (auth.role !== "ORGANIZATION_ADMIN")
+    throw new AppError(403, "Request forbidden");
+  const updated = await attemptRestoreTicket(db, auth.organizationId, ticketId);
+  if (!updated) throw new AppError(404, "Ticket not found");
+  return staffTicket(updated);
 }
 
 function staffTicket(

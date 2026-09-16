@@ -11,6 +11,9 @@ import {
   ticketMessageSchema,
   ticketStatusSchema,
   ticketPrioritySchema,
+  ticketWithdrawSchema,
+  ticketVoidSchema,
+  ticketRestoreSchema,
 } from "./tickets.schema.js";
 import {
   createCustomerTicket,
@@ -22,6 +25,9 @@ import {
   addTicketMessage,
   updateTicketStatus,
   updateTicketPriority,
+  withdrawTicket,
+  voidTicket,
+  restoreTicket,
 } from "./tickets.service.js";
 
 export async function createTicketController(
@@ -35,6 +41,58 @@ export async function createTicketController(
   const ticket = await createCustomerTicket(req.auth, body.data);
   res.set("Cache-Control", "no-store");
   res.status(201).json(ticket);
+}
+
+export async function withdrawTicketController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.auth) throw new Error("Authenticated request context is missing");
+  const params = ticketParamsSchema.safeParse(req.params);
+  if (!params.success)
+    throw new AppError(400, "Invalid ticket ID", params.error.issues);
+  const body = ticketWithdrawSchema.safeParse(req.body ?? {});
+  if (!body.success)
+    throw new AppError(400, "Invalid ticket withdrawal", body.error.issues);
+  const result = await withdrawTicket(req.auth, params.data.ticketId);
+  res.set("Cache-Control", "no-store");
+  res.status(200).json(result);
+}
+
+export async function voidTicketController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.auth) throw new Error("Authenticated request context is missing");
+  const params = ticketParamsSchema.safeParse(req.params);
+  if (!params.success)
+    throw new AppError(400, "Invalid ticket ID", params.error.issues);
+  const body = ticketVoidSchema.safeParse(req.body);
+  if (!body.success)
+    throw new AppError(400, "Invalid ticket void reason", body.error.issues);
+  const result = await voidTicket(
+    req.auth,
+    params.data.ticketId,
+    body.data.reason,
+  );
+  res.set("Cache-Control", "no-store");
+  res.status(200).json(result);
+}
+
+export async function restoreTicketController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.auth) throw new Error("Authenticated request context is missing");
+  const params = ticketParamsSchema.safeParse(req.params);
+  if (!params.success)
+    throw new AppError(400, "Invalid ticket ID", params.error.issues);
+  const body = ticketRestoreSchema.safeParse(req.body ?? {});
+  if (!body.success)
+    throw new AppError(400, "Invalid ticket restoration", body.error.issues);
+  const result = await restoreTicket(req.auth, params.data.ticketId);
+  res.set("Cache-Control", "no-store");
+  res.status(200).json(result);
 }
 
 export async function listTicketsController(

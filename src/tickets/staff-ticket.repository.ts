@@ -129,3 +129,17 @@ export async function findAgentTicketById(
     .select("customer.email as customerEmail")
     .executeTakeFirst();
 }
+
+export async function findAgentTicketForShare(
+  executor: DatabaseExecutor,
+  organizationId: string,
+  agentId: string,
+  ticketId: string,
+) {
+  return agentTicketQuery(executor, organizationId, agentId)
+    .where("tickets.id", "=", ticketId)
+    .clearSelect()
+    .select("tickets.id")
+    .forShare("tickets")
+    .executeTakeFirst();
+}

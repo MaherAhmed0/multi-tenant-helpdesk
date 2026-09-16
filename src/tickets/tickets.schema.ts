@@ -10,24 +10,44 @@ export const createTicketSchema = z
 export const ticketParamsSchema = z.object({ ticketId: z.uuid() }).strict();
 export const ticketClaimSchema = z.object({}).strict();
 export const ticketReleaseSchema = z.object({}).strict();
-export const ticketAssignmentSchema = z.object({
-  teamId: z.uuid().nullable(),
-  agentId: z.uuid().nullable(),
-}).strict();
+export const ticketWithdrawSchema = z.object({}).strict();
+export const ticketRestoreSchema = z.object({}).strict();
+export const ticketVoidSchema = z
+  .object({ reason: z.enum(["INVALID", "SPAM", "DUPLICATE"]) })
+  .strict();
+export const ticketAssignmentSchema = z
+  .object({
+    teamId: z.uuid().nullable(),
+    agentId: z.uuid().nullable(),
+  })
+  .strict();
 export type TicketAssignmentInput = z.infer<typeof ticketAssignmentSchema>;
 
-export const ticketStatusSchema = z.object({
-  status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]),
-}).strict();
+export const ticketStatusSchema = z
+  .object({
+    status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]),
+  })
+  .strict();
 
-export const ticketPrioritySchema = z.object({
-  priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]),
-}).strict();
+export const ticketPrioritySchema = z
+  .object({
+    priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]),
+  })
+  .strict();
 
 export const ticketMessageSchema = createTicketSchema
   .pick({ message: true })
   .strict();
 export type TicketMessageInput = z.infer<typeof ticketMessageSchema>;
+
+export const ticketNoteSchema = z
+  .object({
+    body: ticketMessageSchema.shape.message,
+  })
+  .strict();
+export const ticketNoteParamsSchema = ticketParamsSchema.extend({
+  noteId: z.uuid(),
+});
 
 export const ticketListSchema = z
   .object({
