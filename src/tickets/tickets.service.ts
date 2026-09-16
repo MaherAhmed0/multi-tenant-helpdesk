@@ -1,12 +1,26 @@
 import { db } from "../database/db.js";
 import { AppError } from "../errors/app-error.js";
 import {
+  findOrganizationTicketForReplyUpdate,
+  findAgentTicketForReplyUpdate,
+  touchStaffReplyTicket,
+} from "./ticket-reply.repository.js";
+import {
   attemptClaimTicket,
   attemptReleaseTicket,
   replaceTicketAssignment,
 } from "./ticket-assignment.repository.js";
 import { findAgentForShare } from "../agents/agent.repository.js";
 import { findTeamForShare } from "../teams/team.repository.js";
+import type { TicketPriority, TicketStatus } from "../database/types.js";
+import {
+  attemptAdminPriorityUpdate,
+  attemptAgentPriorityUpdate,
+} from "./ticket-priority.repository.js";
+import {
+  attemptAdminStatusTransition,
+  attemptAgentStatusTransition,
+} from "./ticket-status.repository.js";
 import type { AuthContext } from "../auth/sessions/session-auth.service.js";
 import {
   createTicket,
@@ -260,6 +274,199 @@ export async function updateTicketAssignment(
     if (!updated)
       throw new AppError(409, "Ticket assignment cannot be changed");
     return staffTicket(updated);
+  });
+}
+
+const statusTransitions: Record<TicketStatus, readonly TicketStatus[]> = {
+  OPEN: ["IN_PROGRESS", "RESOLVED", "CLOSED"],
+  IN_PROGRESS: ["OPEN", "RESOLVED", "CLOSED"],
+  RESOLVED: ["OPEN", "CLOSED"],
+  CLOSED: ["OPEN"],
+};
+
+function requireStatusTransition(
+  source: TicketStatus,
+  target: TicketStatus,
+): void {
+  if (!statusTransitions[source].includes(target)) {
+    throw new AppError(409, "Ticket status cannot be changed");
+  }
+}
+
+export async function updateTicketStatus(
+  auth: AuthContext,
+  ticketId: string,
+  target: TicketStatus,
+) {
+  switch (auth.role) {
+    case "ORGANIZATION_ADMIN": {
+      const visible = await findOrganizationTicketById(
+        db,
+        auth.organizationId,
+        ticketId,
+      );
+      if (!visible) throw new AppError(404, "Ticket not found");
+      requireStatusTransition(visible.status, target);
+      const updated = await attemptAdminStatusTransition(
+        db,
+        auth.organizationId,
+        ticketId,
+        visible.status,
+        target,
+      );
+      if (!updated) throw new AppError(409, "Ticket status cannot be changed");
+      return staffTicket(updated);
+    }
+    case "AGENT":
+      return db.transaction().execute(async (trx) => {
+        // User before ticket, as in claim and lifecycle cleanup. No team lock needed.
+        const agent = await findAgentForShare(
+          trx,
+          auth.organizationId,
+          auth.userId,
+        );
+        if (!agent || agent.deactivatedAt !== null)
+          throw new AppError(401, "Authentication required");
+        const visible = await findAgentTicketById(
+          trx,
+          auth.organizationId,
+          agent.id,
+          ticketId,
+        );
+        if (!visible) throw new AppError(404, "Ticket not found");
+        requireStatusTransition(visible.status, target);
+        const updated = await attemptAgentStatusTransition(
+          trx,
+          auth.organizationId,
+          ticketId,
+          visible.status,
+          target,
+          agent,
+        );
+        if (!updated)
+          throw new AppError(409, "Ticket status cannot be changed");
+        return staffTicket(updated);
+      });
+    default:
+      throw new AppError(403, "Request forbidden");
+  }
+}
+
+export async function updateTicketPriority(
+  auth: AuthContext,
+  ticketId: string,
+  priority: TicketPriority,
+) {
+  switch (auth.role) {
+    case "ORGANIZATION_ADMIN": {
+      const visible = await findOrganizationTicketById(
+        db,
+        auth.organizationId,
+        ticketId,
+      );
+      if (!visible) throw new AppError(404, "Ticket not found");
+      const updated = await attemptAdminPriorityUpdate(
+        db,
+        auth.organizationId,
+        ticketId,
+        priority,
+      );
+      if (!updated)
+        throw new AppError(409, "Ticket priority cannot be changed");
+      return staffTicket(updated);
+    }
+    case "AGENT":
+      return db.transaction().execute(async (trx) => {
+        // Keep active-agent state and current membership stable through the UPDATE.
+        // User before ticket follows the existing status/lifecycle lock order.
+        const agent = await findAgentForShare(
+          trx,
+          auth.organizationId,
+          auth.userId,
+        );
+        if (!agent || agent.deactivatedAt !== null)
+          throw new AppError(401, "Authentication required");
+        const visible = await findAgentTicketById(
+          trx,
+          auth.organizationId,
+          agent.id,
+          ticketId,
+        );
+        if (!visible) throw new AppError(404, "Ticket not found");
+        const updated = await attemptAgentPriorityUpdate(
+          trx,
+          auth.organizationId,
+          ticketId,
+          priority,
+          agent,
+        );
+        if (!updated)
+          throw new AppError(409, "Ticket priority cannot be changed");
+        return staffTicket(updated);
+      });
+    default:
+      throw new AppError(403, "Request forbidden");
+  }
+}
+
+export async function addTicketMessage(
+  auth: AuthContext,
+  ticketId: string,
+  input: TicketMessageInput,
+) {
+  if (auth.role === "CUSTOMER")
+    return addCustomerMessage(auth, ticketId, input);
+  if (auth.role !== "AGENT" && auth.role !== "ORGANIZATION_ADMIN") {
+    throw new AppError(403, "Request forbidden");
+  }
+  return db.transaction().execute(async (trx) => {
+    let ticket;
+    if (auth.role === "AGENT") {
+      // Match lifecycle lock order: actor first, then the authorized ticket row.
+      const agent = await findAgentForShare(
+        trx,
+        auth.organizationId,
+        auth.userId,
+      );
+      if (!agent || agent.deactivatedAt !== null)
+        throw new AppError(401, "Authentication required");
+      const visible = await findAgentTicketById(
+        trx,
+        auth.organizationId,
+        agent.id,
+        ticketId,
+      );
+      if (!visible) throw new AppError(404, "Ticket not found");
+      ticket = await findAgentTicketForReplyUpdate(
+        trx,
+        auth.organizationId,
+        ticketId,
+        agent,
+      );
+      if (!ticket) throw new AppError(409, "Cannot reply to this ticket");
+    } else {
+      ticket = await findOrganizationTicketForReplyUpdate(
+        trx,
+        auth.organizationId,
+        ticketId,
+      );
+      if (!ticket) throw new AppError(404, "Ticket not found");
+    }
+    // Read the current status after acquiring the ticket lock, including after waits.
+    if (ticket.status === "CLOSED")
+      throw new AppError(409, "Cannot reply to a closed ticket");
+    const message = await createTicketMessage(trx, {
+      organizationId: auth.organizationId,
+      ticketId: ticket.id,
+      authorUserId: auth.userId,
+      body: input.message,
+    });
+    const updated = await touchStaffReplyTicket(
+      trx,
+      auth.organizationId,
+      ticket.id,
+    );
+    return { message: publicMessage(message), ticketStatus: updated.status };
   });
 }
 

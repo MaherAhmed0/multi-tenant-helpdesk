@@ -163,7 +163,7 @@ describe("tenant staff ticket reads", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it("keeps customer projection minimal and staff blocked from both customer mutations", async () => {
+  it("keeps customer projection minimal and staff blocked from customer ticket creation", async () => {
     const detail = await request(app).get(`/tickets/${conversation.id}`).set("Cookie", secondCustomer.cookie).expect(200);
     expect(detail.body).toEqual({
       id: conversation.id, subject: conversation.subject, status: conversation.status,
@@ -171,10 +171,8 @@ describe("tenant staff ticket reads", () => {
     });
     for (const actor of [agent, admin]) {
       const csrf = await request(app).get("/auth/csrf").set("Cookie", actor.cookie).expect(200);
-      for (const path of ["/tickets", `/tickets/${conversation.id}/messages`]) {
-        expect((await request(app).post(path).set("Cookie", actor.cookie).set("X-CSRF-Token", csrf.body.csrfToken)
-          .send({ subject: "New ticket", message: "Reply" }).expect(403)).body).toEqual({ error: "Request forbidden" });
-      }
+      expect((await request(app).post("/tickets").set("Cookie", actor.cookie).set("X-CSRF-Token", csrf.body.csrfToken)
+        .send({ subject: "New ticket", message: "Reply" }).expect(403)).body).toEqual({ error: "Request forbidden" });
     }
   });
 

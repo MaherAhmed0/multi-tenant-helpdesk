@@ -16,6 +16,14 @@ export const ticketAssignmentSchema = z.object({
 }).strict();
 export type TicketAssignmentInput = z.infer<typeof ticketAssignmentSchema>;
 
+export const ticketStatusSchema = z.object({
+  status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]),
+}).strict();
+
+export const ticketPrioritySchema = z.object({
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]),
+}).strict();
+
 export const ticketMessageSchema = createTicketSchema
   .pick({ message: true })
   .strict();

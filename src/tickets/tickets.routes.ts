@@ -9,10 +9,12 @@ import {
   createTicketController,
   getTicketController,
   listTicketsController,
-  addCustomerMessageController,
+  addTicketMessageController,
   claimTicketController,
   releaseTicketController,
   updateTicketAssignmentController,
+  updateTicketStatusController,
+  updateTicketPriorityController,
 } from "./tickets.controller.js";
 
 export const ticketsRouter = Router();
@@ -29,6 +31,18 @@ ticketsRouter.post(
 ticketsRouter.get("/", listTicketsController);
 
 ticketsRouter.get("/:ticketId", getTicketController);
+
+ticketsRouter.patch(
+  "/:ticketId/priority",
+  requireCsrfToken,
+  updateTicketPriorityController,
+);
+
+ticketsRouter.patch(
+  "/:ticketId/status",
+  requireCsrfToken,
+  updateTicketStatusController,
+);
 
 ticketsRouter.post(
   "/:ticketId/claim",
@@ -53,7 +67,6 @@ ticketsRouter.put(
 
 ticketsRouter.post(
   "/:ticketId/messages",
-  requireCustomer,
   requireCsrfToken,
-  addCustomerMessageController,
+  addTicketMessageController,
 );

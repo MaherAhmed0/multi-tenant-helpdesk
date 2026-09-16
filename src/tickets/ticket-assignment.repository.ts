@@ -1,46 +1,10 @@
-import type { ExpressionBuilder, Kysely, Transaction } from "kysely";
+import type { Kysely, Transaction } from "kysely";
 import { sql } from "kysely";
 
 import type { Database } from "../database/types.js";
+import { staffTicketMutationFields } from "./staff-ticket.fields.js";
 
 type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
-
-// Return the mutation's row, even when release removes the caller's visibility.
-function assignmentResult(eb: ExpressionBuilder<Database, "tickets">) {
-  return [
-    "tickets.id",
-    "tickets.subject",
-    "tickets.status",
-    "tickets.priority",
-    "tickets.created_at as createdAt",
-    "tickets.updated_at as updatedAt",
-    "tickets.closed_at as closedAt",
-    "tickets.assigned_team_id as assignedTeamId",
-    "tickets.assigned_agent_id as assignedAgentId",
-    eb
-      .selectFrom("users as customer")
-      .select("customer.name")
-      .whereRef("customer.organization_id", "=", "tickets.organization_id")
-      .whereRef("customer.id", "=", "tickets.customer_id")
-      .as("customerName"),
-    eb
-      .selectFrom("teams as assigned_team")
-      .select("assigned_team.name")
-      .whereRef("assigned_team.organization_id", "=", "tickets.organization_id")
-      .whereRef("assigned_team.id", "=", "tickets.assigned_team_id")
-      .as("assignedTeamName"),
-    eb
-      .selectFrom("users as assigned_agent")
-      .select("assigned_agent.name")
-      .whereRef(
-        "assigned_agent.organization_id",
-        "=",
-        "tickets.organization_id",
-      )
-      .whereRef("assigned_agent.id", "=", "tickets.assigned_agent_id")
-      .as("assignedAgentName"),
-  ] as const;
-}
 
 export async function attemptReleaseTicket(
   executor: DatabaseExecutor,
@@ -60,7 +24,7 @@ export async function attemptReleaseTicket(
       .where("voided_at", "is", null)
       .where("status", "in", ["OPEN", "IN_PROGRESS"])
       .where("assigned_agent_id", "=", agentId)
-      .returning(assignmentResult)
+      .returning(staffTicketMutationFields)
       // The required tenant-qualified customer FK guarantees a customer name.
       .$narrowType<{ customerName: string }>()
       .executeTakeFirst()
@@ -84,7 +48,7 @@ export async function replaceTicketAssignment(
     .where("id", "=", ticketId)
     .where("voided_at", "is", null)
     .where("status", "in", ["OPEN", "IN_PROGRESS"])
-    .returning(assignmentResult)
+    .returning(staffTicketMutationFields)
     .$narrowType<{ customerName: string }>()
     .executeTakeFirst();
 }
