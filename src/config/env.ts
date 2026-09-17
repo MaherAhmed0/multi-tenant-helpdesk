@@ -2,6 +2,7 @@ import {
   getRequiredEnv,
   parseBoolean,
   parsePort,
+  parseRedisUrl,
   parseTotpEncryptionKey,
 } from "./env-utils.js";
 
@@ -15,6 +16,8 @@ if (Buffer.byteLength(csrfSecret, "utf8") < 32) {
 
 export const env = {
   port,
+
+  redisUrl: parseRedisUrl(getRequiredEnv("REDIS_URL")),
 
   csrfSecret,
 
