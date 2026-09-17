@@ -81,15 +81,16 @@ export async function revokeSession(
   executor: DatabaseExecutor,
   sessionId: string,
   revokedAt: Date,
-): Promise<void> {
-  await executor
+): Promise<boolean> {
+  const result = await executor
     .updateTable("sessions")
     .set({
       revoked_at: revokedAt,
     })
     .where("id", "=", sessionId)
     .where("revoked_at", "is", null)
-    .execute();
+    .executeTakeFirst();
+  return result.numUpdatedRows > 0n;
 }
 
 interface AccountSessionScope {
@@ -123,15 +124,16 @@ export async function findUsableAccountSessions(
 export async function revokeAccountSession(
   executor: DatabaseExecutor,
   input: AccountSessionScope & { sessionId: string; revokedAt: Date },
-): Promise<void> {
-  await executor
+): Promise<boolean> {
+  const result = await executor
     .updateTable("sessions")
     .set({ revoked_at: input.revokedAt })
     .where("id", "=", input.sessionId)
     .where("user_id", "=", input.userId)
     .where("organization_id", "=", input.organizationId)
     .where("revoked_at", "is", null)
-    .execute();
+    .executeTakeFirst();
+  return result.numUpdatedRows > 0n;
 }
 
 export async function revokeAccountSessions(

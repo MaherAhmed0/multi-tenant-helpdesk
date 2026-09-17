@@ -163,14 +163,15 @@ export async function findUsableSystemAdminSessions(
 export async function revokeOwnedSystemAdminSession(
   executor: DatabaseExecutor,
   input: { systemAdminId: string; sessionId: string },
-): Promise<void> {
-  await executor
+): Promise<boolean> {
+  const result = await executor
     .updateTable("system_admin_sessions")
     .set({ revoked_at: sql<Date>`clock_timestamp()` })
     .where("id", "=", input.sessionId)
     .where("system_admin_id", "=", input.systemAdminId)
     .where("revoked_at", "is", null)
-    .execute();
+    .executeTakeFirst();
+  return result.numUpdatedRows > 0n;
 }
 
 export async function revokeSystemAdminSessions(

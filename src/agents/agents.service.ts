@@ -1,4 +1,5 @@
 import { db } from "../database/db.js";
+import { logger } from "../observability/logger.js";
 import { AppError } from "../errors/app-error.js";
 import {
   findAgent,
@@ -83,7 +84,7 @@ export async function reassignAgentTeam(
 }
 
 export async function deactivateAgent(organizationId: string, agentId: string) {
-  return db.transaction().execute(async (trx) => {
+  const result = await db.transaction().execute(async (trx) => {
     const locked = await findAgentForUpdate(trx, organizationId, agentId);
     if (!locked) throw new AppError(404, "Agent not found");
     if (locked.deactivatedAt === null) {
@@ -100,6 +101,8 @@ export async function deactivateAgent(organizationId: string, agentId: string) {
     if (!agent) throw new Error("Updated agent is missing");
     return agentRepresentation(agent);
   });
+  logger.info({ event: "sessions_revoked", scope: "tenant_user", targetUserId: agentId });
+  return result;
 }
 
 export async function reactivateAgent(organizationId: string, agentId: string) {
@@ -139,4 +142,5 @@ export async function revokeAgentSessions(
     userId: agent.id,
     revokedAt: new Date(),
   });
+  logger.info({ event: "sessions_revoked", scope: "tenant_user", targetUserId: agentId });
 }

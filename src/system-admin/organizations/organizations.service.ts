@@ -1,4 +1,5 @@
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import {
   deactivatePlatformOrganization,
@@ -22,6 +23,8 @@ export async function deactivateOrganization(
     // Run even when already inactive; both state changes must commit together.
     await revokePlatformOrganizationSessions(trx, organizationId);
   });
+  logger.info({ event: "organization_deactivated", targetOrganizationId: organizationId, action: "deactivate" });
+  logger.info({ event: "sessions_revoked", scope: "tenant_organization", targetOrganizationId: organizationId });
 }
 
 export async function reactivateOrganization(
@@ -29,6 +32,7 @@ export async function reactivateOrganization(
 ): Promise<void> {
   const organization = await reactivatePlatformOrganization(db, organizationId);
   if (!organization) throw new AppError(404, "Organization not found");
+  logger.info({ event: "organization_reactivated", targetOrganizationId: organizationId, action: "reactivate" });
 }
 
 export async function revokeOrganizationSessions(
@@ -36,6 +40,7 @@ export async function revokeOrganizationSessions(
 ): Promise<void> {
   await getOrganization(organizationId);
   await revokePlatformOrganizationSessions(db, organizationId);
+  logger.info({ event: "sessions_revoked", scope: "tenant_organization", targetOrganizationId: organizationId });
 }
 
 export async function listOrganizations(input: OrganizationListInput) {

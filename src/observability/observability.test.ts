@@ -48,6 +48,7 @@ beforeEach(() => {
     },
   });
   vi.spyOn(logger, "info").mockImplementation(captured.info.bind(captured));
+  vi.spyOn(logger, "error").mockImplementation(captured.error.bind(captured));
 });
 afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
@@ -281,6 +282,7 @@ describe("request observability", () => {
       .get("/test/fail/PRIVATE-ID?code=PRIVATE-CODE")
       .expect(409);
     expect(failure.body).toEqual({ error: "Expected conflict" });
+    expect(logger.error).not.toHaveBeenCalled();
     const unknown = await request(testApp)
       .get("/PRIVATE-UNKNOWN?code=PRIVATE-CODE")
       .expect(404);
@@ -301,16 +303,29 @@ describe("request observability", () => {
     expect(JSON.stringify(records)).not.toContain("PRIVATE");
   });
 
-  it("establishes context before JSON parsing without changing global error responses", async () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("logs one unexpected error with request context and preserves the generic 500 response", async () => {
     const response = await request(app)
       .post("/auth/login")
       .set("Content-Type", "application/json")
       .send('{"password":')
       .expect(500);
     expect(response.body).toEqual({ error: "Internal server error" });
-    expect(errors).toHaveBeenCalledTimes(1);
-    expect(records).toEqual([
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(records.filter((row) => row.event === "unhandled_request_error")).toEqual([
+      expect.objectContaining({
+        level: 50,
+        requestId: response.headers["x-request-id"],
+        event: "unhandled_request_error",
+        method: "POST",
+        route: "unmatched",
+        err: expect.objectContaining({
+          type: "SyntaxError",
+          message: expect.any(String),
+          stack: expect.any(String),
+        }),
+      }),
+    ]);
+    expect(records.filter((row) => row.event === "http_request_completed")).toEqual([
       expect.objectContaining({
         requestId: response.headers["x-request-id"],
         route: "unmatched",

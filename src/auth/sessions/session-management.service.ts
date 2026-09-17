@@ -1,4 +1,5 @@
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { SESSION_IDLE_TIMEOUT_MS } from "../auth.constants.js";
 import type { AuthContext } from "./session-auth.service.js";
 import {
@@ -26,12 +27,13 @@ export async function revokeOwnedSession(
   auth: AuthContext,
   sessionId: string,
 ): Promise<void> {
-  await revokeAccountSession(db, {
+  const revoked = await revokeAccountSession(db, {
     userId: auth.userId,
     organizationId: auth.organizationId,
     sessionId,
     revokedAt: new Date(),
   });
+  if (revoked) logger.info({ event: "session_revoked", scope: "tenant_session", targetSessionId: sessionId });
 }
 
 export async function logoutAll(auth: AuthContext): Promise<void> {
@@ -40,4 +42,5 @@ export async function logoutAll(auth: AuthContext): Promise<void> {
     organizationId: auth.organizationId,
     revokedAt: new Date(),
   });
+  logger.info({ event: "sessions_revoked", scope: "tenant_account" });
 }

@@ -1,4 +1,5 @@
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import type { SystemAdminAuthContext } from "../auth.middleware.js";
 import {
   findUsableSystemAdminSessions,
@@ -18,10 +19,11 @@ export async function revokeOwnedSession(
   auth: SystemAdminAuthContext,
   sessionId: string,
 ): Promise<void> {
-  await revokeOwnedSystemAdminSession(db, {
+  const revoked = await revokeOwnedSystemAdminSession(db, {
     systemAdminId: auth.systemAdminId,
     sessionId,
   });
+  if (revoked) logger.info({ event: "session_revoked", scope: "system_admin_session", targetSessionId: sessionId });
 }
 
 export async function logoutSystemAdmin(
@@ -34,4 +36,5 @@ export async function logoutAllSystemAdminSessions(
   auth: SystemAdminAuthContext,
 ): Promise<void> {
   await revokeSystemAdminSessions(db, auth.systemAdminId);
+  logger.info({ event: "sessions_revoked", scope: "system_admin_account" });
 }

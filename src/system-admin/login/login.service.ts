@@ -1,6 +1,7 @@
 import argon2 from "argon2";
 
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import { AUTH_CHALLENGE_LIFETIME_MS } from "../challenge/auth-challenge.constants.js";
 import { generateAuthChallengeToken } from "../challenge/auth-challenge-token.js";
@@ -21,6 +22,11 @@ export async function startSystemAdminLogin(input: SystemAdminLoginInput) {
   );
 
   if (!activeAccount || !passwordMatches) {
+    logger.warn({
+      event: "authentication_failed",
+      scope: "system_admin",
+      reason: "invalid_credentials",
+    });
     throw new AppError(401, "Invalid credentials");
   }
 

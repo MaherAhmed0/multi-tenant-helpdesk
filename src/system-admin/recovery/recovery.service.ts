@@ -1,4 +1,5 @@
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import { hashAuthChallengeToken } from "../challenge/auth-challenge-token.js";
 import {
@@ -14,6 +15,11 @@ import { SYSTEM_ADMIN_SESSION_ABSOLUTE_LIFETIME_MS } from "../sessions/session.c
 import { createSystemAdminSession } from "../sessions/session.repository.js";
 
 function mfaFailure(): AppError {
+  logger.warn({
+    event: "authentication_failed",
+    scope: "system_admin",
+    reason: "invalid_credentials",
+  });
   return new AppError(401, "MFA authentication failed");
 }
 
@@ -33,7 +39,7 @@ export async function completeSystemAdminRecovery(input: {
   const absoluteExpiresAt = new Date(
     Date.now() + SYSTEM_ADMIN_SESSION_ABSOLUTE_LIFETIME_MS,
   );
-  const invalidCode = mfaFailure();
+  const invalidCode = new AppError(401, "MFA authentication failed");
 
   try {
     await db.transaction().execute(async (trx) => {
@@ -61,6 +67,11 @@ export async function completeSystemAdminRecovery(input: {
     // Count credential rejection after rollback; unexpected DB failures propagate.
     if (error === invalidCode) {
       await recordAuthChallengeFailure(db, challenge.id);
+      logger.warn({
+        event: "authentication_failed",
+        scope: "system_admin",
+        reason: "invalid_credentials",
+      });
     }
     throw error;
   }

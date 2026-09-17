@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 
 import { logger } from "./logger.js";
 import {
@@ -16,6 +16,14 @@ export const captureRequestRoutePrefix: RequestHandler = (req, res, next) => {
   next();
 };
 
+export function getNormalizedRequestRoute(req: Request, res: Response): string {
+  const path: unknown = req.route?.path;
+  const prefix: unknown = res.locals.requestRoutePrefix;
+  return typeof path === "string"
+    ? `${typeof prefix === "string" ? prefix : ""}${path === "/" && prefix ? "" : path}`
+    : "unmatched";
+}
+
 export const requestContextMiddleware: RequestHandler = (req, res, next) => {
   const context: RequestContext = { requestId: randomUUID() };
   const startedAt = performance.now();
@@ -28,12 +36,7 @@ export const requestContextMiddleware: RequestHandler = (req, res, next) => {
       logged = true;
       res.off("finish", completed);
       res.off("close", completed);
-      const path: unknown = req.route?.path;
-      const prefix: unknown = res.locals.requestRoutePrefix;
-      const route =
-        typeof path === "string"
-          ? `${typeof prefix === "string" ? prefix : ""}${path === "/" && prefix ? "" : path}`
-          : "unmatched";
+      const route = getNormalizedRequestRoute(req, res);
       // EventEmitter callbacks may run outside the original async chain.
       // Re-enter this request's store, including any successful auth enrichment.
       runWithRequestContext(context, () =>

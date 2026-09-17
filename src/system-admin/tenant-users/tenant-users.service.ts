@@ -1,4 +1,5 @@
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import {
   deactivatePlatformTenantUser,
@@ -12,7 +13,7 @@ import { revokePlatformTenantUserSessions } from "./platform-tenant-user-session
 import { clearAgentTicketAssignments } from "../../tickets/ticket-assignment.repository.js";
 
 export async function deactivateTenantUser(userId: string): Promise<void> {
-  await db.transaction().execute(async (trx) => {
+  const organizationId = await db.transaction().execute(async (trx) => {
     let user = await findPlatformTenantUser(trx, userId);
     if (!user) throw new AppError(404, "Tenant user not found");
 
@@ -54,7 +55,9 @@ export async function deactivateTenantUser(userId: string): Promise<void> {
     if (!deactivated) throw new AppError(404, "Tenant user not found");
     await revokePlatformTenantUserSessions(trx, user.organizationId, user.id);
     if (user.role === "AGENT") await clearAgentTicketAssignments(trx, user.organizationId, user.id);
+    return user.organizationId;
   });
+  logger.info({ event: "sessions_revoked", scope: "tenant_user", targetOrganizationId: organizationId, targetUserId: userId });
 }
 
 export async function reactivateTenantUser(userId: string): Promise<void> {
@@ -86,4 +89,5 @@ export async function revokeTenantUserSessions(userId: string): Promise<void> {
   const user = await findPlatformTenantUser(db, userId);
   if (!user) throw new AppError(404, "Tenant user not found");
   await revokePlatformTenantUserSessions(db, user.organizationId, user.id);
+  logger.info({ event: "sessions_revoked", scope: "tenant_user", targetOrganizationId: user.organizationId, targetUserId: user.id });
 }

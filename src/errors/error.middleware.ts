@@ -1,13 +1,10 @@
 import type { ErrorRequestHandler } from "express";
 
 import { AppError } from "./app-error.js";
+import { logger } from "../observability/logger.js";
+import { getNormalizedRequestRoute } from "../observability/request.middleware.js";
 
-export const errorMiddleware: ErrorRequestHandler = (
-  error,
-  _req,
-  res,
-  next,
-) => {
+export const errorMiddleware: ErrorRequestHandler = (error, req, res, next) => {
   if (res.headersSent) {
     next(error);
     return;
@@ -21,7 +18,12 @@ export const errorMiddleware: ErrorRequestHandler = (
     return;
   }
 
-  console.error(error);
+  logger.error({
+    event: "unhandled_request_error",
+    err: error,
+    method: req.method,
+    route: getNormalizedRequestRoute(req, res),
+  });
 
   res.status(500).json({
     error: "Internal server error",

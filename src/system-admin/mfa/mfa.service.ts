@@ -1,6 +1,7 @@
 import { verify } from "otplib";
 
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import { hashAuthChallengeToken } from "../challenge/auth-challenge-token.js";
 import {
@@ -19,6 +20,11 @@ import { SYSTEM_ADMIN_SESSION_ABSOLUTE_LIFETIME_MS } from "../sessions/session.c
 import { createSystemAdminSession } from "../sessions/session.repository.js";
 
 function mfaFailure(): AppError {
+  logger.warn({
+    event: "authentication_failed",
+    scope: "system_admin",
+    reason: "invalid_credentials",
+  });
   return new AppError(401, "MFA authentication failed");
 }
 

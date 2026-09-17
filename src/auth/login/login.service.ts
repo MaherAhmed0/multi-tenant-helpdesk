@@ -1,6 +1,7 @@
 import argon2 from "argon2";
 
 import { db } from "../../database/db.js";
+import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
 import {
   SESSION_ABSOLUTE_LIFETIME_MS,
@@ -33,6 +34,11 @@ export async function login(input: LoginInput, context: LoginContext) {
   const identifierHash = hashLoginIdentifier(input.organizationSlug, input.email);
 
   if (await findActiveLoginBlock(db, identifierHash)) {
+    logger.warn({
+      event: "authentication_failed",
+      scope: "tenant",
+      reason: "invalid_credentials",
+    });
     throw new AppError(429, "Too many login attempts");
   }
 
@@ -59,6 +65,11 @@ export async function login(input: LoginInput, context: LoginContext) {
       failureThreshold: LOGIN_FAILURE_THRESHOLD,
     });
 
+    logger.warn({
+      event: "authentication_failed",
+      scope: "tenant",
+      reason: "invalid_credentials",
+    });
     if (throttle.failed_attempts >= LOGIN_FAILURE_THRESHOLD) {
       throw new AppError(429, "Too many login attempts");
     }
