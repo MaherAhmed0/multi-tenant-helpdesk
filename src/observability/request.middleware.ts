@@ -5,6 +5,10 @@ import type { Request, RequestHandler, Response } from "express";
 
 import { logger } from "./logger.js";
 import {
+  httpRequestsTotal,
+  httpRequestDurationSeconds,
+} from "./http-metrics.js";
+import {
   runWithRequestContext,
   type RequestContext,
 } from "./request-context.js";
@@ -17,11 +21,27 @@ export const captureRequestRoutePrefix: RequestHandler = (req, res, next) => {
 };
 
 export function getNormalizedRequestRoute(req: Request, res: Response): string {
-  const path: unknown = req.route?.path;
-  const prefix: unknown = res.locals.requestRoutePrefix;
-  return typeof path === "string"
-    ? `${typeof prefix === "string" ? prefix : ""}${path === "/" && prefix ? "" : path}`
-    : "unmatched";
+  const prefix =
+    typeof res.locals.requestRoutePrefix === "string"
+      ? res.locals.requestRoutePrefix
+      : "";
+
+  const routePath =
+    typeof req.route?.path === "string" ? req.route.path : undefined;
+
+  if (routePath) {
+    if (routePath === "/") {
+      return prefix || "/";
+    }
+
+    return `${prefix}${routePath}`;
+  }
+
+  if (prefix) {
+    return prefix;
+  }
+
+  return "unmatched";
 }
 
 export const requestContextMiddleware: RequestHandler = (req, res, next) => {
@@ -37,6 +57,20 @@ export const requestContextMiddleware: RequestHandler = (req, res, next) => {
       res.off("finish", completed);
       res.off("close", completed);
       const route = getNormalizedRequestRoute(req, res);
+      const durationMs = performance.now() - startedAt;
+
+      if (res.writableFinished) {
+        httpRequestsTotal.inc({
+          method: req.method,
+          route,
+          status: String(res.statusCode),
+        });
+
+        httpRequestDurationSeconds.observe(
+          { method: req.method, route },
+          durationMs / 1000,
+        );
+      }
       // EventEmitter callbacks may run outside the original async chain.
       // Re-enter this request's store, including any successful auth enrichment.
       runWithRequestContext(context, () =>
@@ -45,7 +79,7 @@ export const requestContextMiddleware: RequestHandler = (req, res, next) => {
           method: req.method,
           route,
           statusCode: res.statusCode,
-          durationMs: performance.now() - startedAt,
+          durationMs,
           ...(res.writableFinished ? {} : { aborted: true }),
         }),
       );

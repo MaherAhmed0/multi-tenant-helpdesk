@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.7.2",
+    "@prometheus-io/client": "^0.16.1",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",

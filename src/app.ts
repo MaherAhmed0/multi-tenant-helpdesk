@@ -1,6 +1,7 @@
 import express from "express";
 
 import { healthRouter } from "./health/health.routes.js";
+import { metricsRouter } from "./observability/metrics.routes.js";
 import { registrationRouter } from "./organization-registration/registration.routes.js";
 import { errorMiddleware } from "./errors/error.middleware.js";
 import { authRouter } from "./auth/auth.routes.js";
@@ -28,6 +29,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use("/health", captureRequestRoutePrefix, healthRouter);
+app.use("/metrics", captureRequestRoutePrefix, metricsRouter);
 app.use(
   "/organization-registration",
   captureRequestRoutePrefix,
