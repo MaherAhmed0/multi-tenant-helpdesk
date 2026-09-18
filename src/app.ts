@@ -1,9 +1,16 @@
 import express from "express";
+import cookieParser from "cookie-parser";
+import { docsRouter } from "./docs/docs.routes.js";
 
+import {
+  requestContextMiddleware,
+  captureRequestRoutePrefix,
+} from "./observability/request.middleware.js";
 import { healthRouter } from "./health/health.routes.js";
 import { metricsRouter } from "./observability/metrics.routes.js";
 import { registrationRouter } from "./organization-registration/registration.routes.js";
 import { errorMiddleware } from "./errors/error.middleware.js";
+import { AppError } from "./errors/app-error.js";
 import { authRouter } from "./auth/auth.routes.js";
 import { teamsRouter } from "./teams/teams.routes.js";
 import { agentsRouter } from "./agents/agents.routes.js";
@@ -17,11 +24,6 @@ import { systemAdminAuthRouter } from "./system-admin/auth.routes.js";
 import { systemAdminOrganizationsRouter } from "./system-admin/organizations/organizations.routes.js";
 import { systemAdminOverviewRouter } from "./system-admin/overview/overview.routes.js";
 import { systemAdminTenantUsersRouter } from "./system-admin/tenant-users/tenant-users.routes.js";
-import cookieParser from "cookie-parser";
-import {
-  requestContextMiddleware,
-  captureRequestRoutePrefix,
-} from "./observability/request.middleware.js";
 
 export const app = express();
 
@@ -73,5 +75,11 @@ app.use(
   captureRequestRoutePrefix,
   systemAdminTenantUsersRouter,
 );
+
+app.use(docsRouter);
+
+app.use((_req, _res, next) => {
+  next(new AppError(404, "Route not found"));
+});
 
 app.use(errorMiddleware);

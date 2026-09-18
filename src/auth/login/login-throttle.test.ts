@@ -127,6 +127,7 @@ describe("tenant login throttling", () => {
         .executeTakeFirstOrThrow();
       expect(unchanged).toEqual(blocked);
     },
+    10_000, // Multiple Argon2 verifications can contend during the full suite.
   );
 
   it("clears prior failures on successful authentication", async () => {

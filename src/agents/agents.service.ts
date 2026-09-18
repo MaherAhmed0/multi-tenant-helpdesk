@@ -1,3 +1,6 @@
+import type { Transaction } from "kysely";
+import type { Database } from "../database/types.js";
+
 import { db } from "../database/db.js";
 import { logger } from "../observability/logger.js";
 import { AppError } from "../errors/app-error.js";
@@ -106,29 +109,38 @@ export async function deactivateAgent(organizationId: string, agentId: string) {
 }
 
 export async function reactivateAgent(organizationId: string, agentId: string) {
-  return db.transaction().execute(async (trx) => {
-    const locked = await findAgentForUpdate(trx, organizationId, agentId);
-    if (!locked) throw new AppError(404, "Agent not found");
-    if (locked.deactivatedAt !== null) {
-      if (locked.teamId === null) throw new Error("Agent team is missing");
-      const retained = await findTeamForShare(
-        trx,
-        organizationId,
-        locked.teamId,
-      );
-      if (!retained) throw new Error("Agent team is missing");
-      let teamId = retained.id;
-      if (retained.deactivatedAt !== null) {
-        const general = await findGeneralTeam(trx, organizationId);
-        if (!general) throw new Error("Organization General team is missing");
-        teamId = general.id;
-      }
-      await markAgentReactivated(trx, organizationId, locked.id, teamId);
+  return db.transaction().execute((trx) =>
+    reactivateAgentInTransaction(trx, organizationId, agentId),
+  );
+}
+
+// Reuse this lifecycle inside platform reactivation's organization transaction.
+export async function reactivateAgentInTransaction(
+  trx: Transaction<Database>,
+  organizationId: string,
+  agentId: string,
+) {
+  const locked = await findAgentForUpdate(trx, organizationId, agentId);
+  if (!locked) throw new AppError(404, "Agent not found");
+  if (locked.deactivatedAt !== null) {
+    if (locked.teamId === null) throw new Error("Agent team is missing");
+    const retained = await findTeamForShare(
+      trx,
+      organizationId,
+      locked.teamId,
+    );
+    if (!retained) throw new Error("Agent team is missing");
+    let teamId = retained.id;
+    if (retained.deactivatedAt !== null) {
+      const general = await findGeneralTeam(trx, organizationId);
+      if (!general) throw new Error("Organization General team is missing");
+      teamId = general.id;
     }
-    const agent = await findAgent(trx, organizationId, locked.id);
-    if (!agent) throw new Error("Updated agent is missing");
-    return agentRepresentation(agent);
-  });
+    await markAgentReactivated(trx, organizationId, locked.id, teamId);
+  }
+  const agent = await findAgent(trx, organizationId, locked.id);
+  if (!agent) throw new Error("Updated agent is missing");
+  return agentRepresentation(agent);
 }
 
 export async function revokeAgentSessions(

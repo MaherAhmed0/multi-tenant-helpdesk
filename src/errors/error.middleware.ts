@@ -9,6 +9,15 @@ export const errorMiddleware: ErrorRequestHandler = (error, req, res, next) => {
     next(error);
     return;
   }
+  // Recognize Express JSON parsing failures without echoing their body/message.
+  // Unrelated application SyntaxErrors must still be treated as unexpected.
+  if (
+    error instanceof SyntaxError &&
+    "type" in error && error.type === "entity.parse.failed" &&
+    "status" in error && error.status === 400
+  ) {
+    error = new AppError(400, "Invalid JSON body");
+  }
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
       error: error.message,

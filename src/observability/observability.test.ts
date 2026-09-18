@@ -304,10 +304,17 @@ describe("request observability", () => {
   });
 
   it("logs one unexpected error with request context and preserves the generic 500 response", async () => {
-    const response = await request(app)
+    const testApp = express();
+    testApp.use(requestContextMiddleware);
+    // Malformed JSON is a controlled 400; exercise an unrelated application error.
+    testApp.use((_req, _res, next) => {
+      next(new SyntaxError("Unexpected application failure"));
+    });
+    testApp.use(errorMiddleware);
+    const response = await request(testApp)
       .post("/auth/login")
       .set("Content-Type", "application/json")
-      .send('{"password":')
+      .send({ password: "SENSITIVE-TEST-VALUE" })
       .expect(500);
     expect(response.body).toEqual({ error: "Internal server error" });
     expect(logger.error).toHaveBeenCalledTimes(1);

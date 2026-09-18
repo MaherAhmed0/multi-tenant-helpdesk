@@ -1,6 +1,7 @@
 import { db } from "../../database/db.js";
 import { logger } from "../../observability/logger.js";
 import { AppError } from "../../errors/app-error.js";
+import { reactivateAgentInTransaction } from "../../agents/agents.service.js";
 import {
   deactivatePlatformTenantUser,
   findOtherActiveOrganizationAdmin,
@@ -75,6 +76,10 @@ export async function reactivateTenantUser(userId: string): Promise<void> {
         409,
         "Cannot reactivate a user in a deactivated organization",
       );
+    }
+    if (user.role === "AGENT") {
+      await reactivateAgentInTransaction(trx, user.organizationId, user.id);
+      return;
     }
     const reactivated = await reactivatePlatformTenantUser(
       trx,
