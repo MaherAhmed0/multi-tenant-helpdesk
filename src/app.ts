@@ -12,6 +12,7 @@ import { organizationAdminInvitationsRouter } from "./organization-admin-invitat
 import { invitationsRouter } from "./invitations/invitations.routes.js";
 import { customerOnboardingRouter } from "./customer-onboarding/onboarding.routes.js";
 import { ticketsRouter } from "./tickets/tickets.routes.js";
+import { statisticsRouter } from "./statistics/statistics.routes.js";
 import { systemAdminAuthRouter } from "./system-admin/auth.routes.js";
 import { systemAdminOrganizationsRouter } from "./system-admin/organizations/organizations.routes.js";
 import { systemAdminOverviewRouter } from "./system-admin/overview/overview.routes.js";
@@ -55,6 +56,7 @@ app.use(
   customerOnboardingRouter,
 );
 app.use("/tickets", captureRequestRoutePrefix, ticketsRouter);
+app.use("/statistics", captureRequestRoutePrefix, statisticsRouter);
 app.use("/system-admin/auth", captureRequestRoutePrefix, systemAdminAuthRouter);
 app.use(
   "/system-admin/organizations",
